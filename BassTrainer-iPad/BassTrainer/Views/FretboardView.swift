@@ -5,165 +5,161 @@ struct FretboardView: View {
     let isPlaying: Bool
     let levelColor: Color
 
-    // Fret spacing uses the 12th root of 2 formula (real guitar physics)
-    private static let maxFret = 24
-    private static let maxFretNormalized: Double = {
-        1.0 - pow(0.5, Double(maxFret) / 12.0)
-    }()
+    // Calibrated positions reference width (from web version)
+    private static let referenceWidth: CGFloat = 1883.0
+
+    // Calibrated positions: "stringIndex-fret" -> (x, y) at reference width
+    // Strings: 0=B, 1=E, 2=A, 3=D, 4=G (matches BassString raw values: b=4,e=3,a=2,d=1,g=0)
+    // We map BassString.rawValue: g=0->4, d=1->3, a=2->2, e=3->1, b=4->0
+    private static let calibratedPositions: [String: CGPoint] = [
+        "0-0": CGPoint(x: 110, y: 39),
+        "0-3": CGPoint(x: 353, y: 33),
+        "0-5": CGPoint(x: 536.4, y: 29),
+        "0-7": CGPoint(x: 707, y: 25),
+        "0-9": CGPoint(x: 872, y: 21),
+        "0-12": CGPoint(x: 1095, y: 16),
+        "0-15": CGPoint(x: 1303, y: 12),
+        "0-17": CGPoint(x: 1422, y: 8),
+        "0-19": CGPoint(x: 1533, y: 4),
+        "0-21": CGPoint(x: 1632, y: 2),
+        "0-24": CGPoint(x: 1775, y: -1),
+
+        "1-0": CGPoint(x: 82, y: 48),
+        "1-3": CGPoint(x: 338, y: 44),
+        "1-5": CGPoint(x: 520.6, y: 40.1),
+        "1-7": CGPoint(x: 696, y: 37),
+        "1-9": CGPoint(x: 863, y: 33),
+        "1-12": CGPoint(x: 1097, y: 30),
+        "1-15": CGPoint(x: 1311, y: 25),
+        "1-17": CGPoint(x: 1435, y: 22),
+        "1-19": CGPoint(x: 1550, y: 20),
+        "1-21": CGPoint(x: 1661, y: 21),
+        "1-24": CGPoint(x: 1809, y: 15),
+
+        "2-0": CGPoint(x: 57, y: 58),
+        "2-3": CGPoint(x: 319, y: 53),
+        "2-5": CGPoint(x: 506.3, y: 53),
+        "2-7": CGPoint(x: 686, y: 51),
+        "2-9": CGPoint(x: 850.8, y: 48.2),
+        "2-12": CGPoint(x: 1098, y: 44),
+        "2-15": CGPoint(x: 1319, y: 40),
+        "2-17": CGPoint(x: 1453, y: 41),
+        "2-19": CGPoint(x: 1576, y: 39),
+        "2-21": CGPoint(x: 1700, y: 39),
+        "2-24": CGPoint(x: 1848, y: 36),
+
+        "3-0": CGPoint(x: 30, y: 69),
+        "3-3": CGPoint(x: 297, y: 66),
+        "3-5": CGPoint(x: 491.4, y: 66.9),
+        "3-7": CGPoint(x: 676, y: 66),
+        "3-9": CGPoint(x: 846.4, y: 64.8),
+        "3-12": CGPoint(x: 1102, y: 63),
+        "3-15": CGPoint(x: 1332, y: 64),
+        "3-17": CGPoint(x: 1477, y: 63),
+        "3-19": CGPoint(x: 1606, y: 61),
+        "3-21": CGPoint(x: 1731, y: 60),
+        "3-24": CGPoint(x: 1882, y: 59),
+
+        "4-0": CGPoint(x: 5, y: 80),
+        "4-3": CGPoint(x: 272, y: 79),
+        "4-5": CGPoint(x: 476.4, y: 81.4),
+        "4-7": CGPoint(x: 665, y: 82),
+        "4-9": CGPoint(x: 842.2, y: 82.4),
+        "4-12": CGPoint(x: 1108, y: 83),
+        "4-15": CGPoint(x: 1345, y: 82),
+        "4-17": CGPoint(x: 1498, y: 83),
+        "4-19": CGPoint(x: 1638, y: 85),
+        "4-21": CGPoint(x: 1767, y: 83),
+        "4-24": CGPoint(x: 1883, y: 84),
+    ]
+
+    // Calibrated frets for interpolation
+    private static let calibratedFrets = [0, 3, 5, 7, 9, 12, 15, 17, 19, 21, 24]
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let neckRect = CGRect(
-                x: 50,
-                y: 10,
-                width: size.width - 60,
-                height: size.height - 20
-            )
+            // Image aspect ratio: 4019 x 332
+            let imageAspect: CGFloat = 4019.0 / 332.0
+            let renderedWidth = size.width
+            let renderedHeight = renderedWidth / imageAspect
 
-            ZStack {
-                // Draw the fretboard using Canvas
-                Canvas { context, _ in
-                    drawNeck(context: context, rect: neckRect)
-                    drawFrets(context: context, rect: neckRect)
-                    drawDotMarkers(context: context, rect: neckRect)
-                    drawStrings(context: context, rect: neckRect)
-                    drawFretNumbers(context: context, rect: neckRect)
-                }
+            ZStack(alignment: .topLeading) {
+                // Real bass fretboard photo
+                Image("BassFretboard")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: renderedWidth)
 
-                // String labels on the left
-                ForEach(BassString.allCases) { string in
-                    let y = Self.stringY(string: string.rawValue, in: neckRect)
-                    Text(string.name)
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .frame(width: 30, height: 24)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(4)
-                        .position(x: 20, y: y)
-                }
-
-                // Animated target dot
+                // Target dot
                 if let position = currentPosition, isPlaying {
-                    let point = targetPoint(position: position, in: neckRect)
+                    let point = notePosition(
+                        position: position,
+                        viewWidth: renderedWidth,
+                        viewHeight: renderedHeight
+                    )
                     TargetDotView(point: point, color: levelColor)
                 }
             }
+            .frame(width: size.width, height: size.height)
+            .clipped()
         }
-        .background(Color.black.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Drawing Functions
+    // MARK: - Position Mapping
 
-    private func drawNeck(context: GraphicsContext, rect: CGRect) {
-        // Neck background (rosewood-like gradient)
-        let gradient = Gradient(colors: [
-            Color(red: 0.35, green: 0.20, blue: 0.10),
-            Color(red: 0.45, green: 0.28, blue: 0.15),
-            Color(red: 0.40, green: 0.24, blue: 0.12),
-        ])
-        context.fill(
-            Path(roundedRect: rect, cornerRadius: 6),
-            with: .linearGradient(
-                gradient,
-                startPoint: CGPoint(x: rect.minX, y: rect.minY),
-                endPoint: CGPoint(x: rect.minX, y: rect.maxY)
-            )
-        )
-    }
-
-    private func drawFrets(context: GraphicsContext, rect: CGRect) {
-        for fret in 0...Self.maxFret {
-            let x = Self.fretX(fret: fret, in: rect)
-            var path = Path()
-            path.move(to: CGPoint(x: x, y: rect.minY))
-            path.addLine(to: CGPoint(x: x, y: rect.maxY))
-
-            let lineWidth: CGFloat = fret == 0 ? 5 : 1.5
-            let color: Color = fret == 0 ? .white : Color(white: 0.7, opacity: 0.7)
-            context.stroke(path, with: .color(color), lineWidth: lineWidth)
+    /// Map a BassString rawValue to the calibration string index.
+    /// BassString: g=0, d=1, a=2, e=3, b=4
+    /// Calibration: 0=B, 1=E, 2=A, 3=D, 4=G
+    private func calibrationStringIndex(for bassString: BassString) -> Int {
+        switch bassString {
+        case .b: return 0
+        case .e: return 1
+        case .a: return 2
+        case .d: return 3
+        case .g: return 4
         }
     }
 
-    private func drawDotMarkers(context: GraphicsContext, rect: CGRect) {
-        let singleDotFrets = [3, 5, 7, 9, 15, 17, 19, 21]
-        let doubleDotFrets = [12, 24]
-        let dotRadius: CGFloat = 5
+    private func notePosition(position: FretPosition, viewWidth: CGFloat, viewHeight: CGFloat) -> CGPoint {
+        let stringIdx = calibrationStringIndex(for: position.string)
+        let fret = min(position.fret, 24)
+        let scale = viewWidth / Self.referenceWidth
 
-        for fret in singleDotFrets {
-            let x = Self.fretMidX(fret: fret, in: rect)
-            let y = rect.midY
-            let dotRect = CGRect(x: x - dotRadius, y: y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-            context.fill(Path(ellipseIn: dotRect), with: .color(.white.opacity(0.25)))
+        // Try exact calibrated position
+        let exactKey = "\(stringIdx)-\(fret)"
+        if let exact = Self.calibratedPositions[exactKey] {
+            return CGPoint(x: exact.x * scale, y: exact.y * scale)
         }
 
-        for fret in doubleDotFrets {
-            let x = Self.fretMidX(fret: fret, in: rect)
-            let y1 = rect.minY + rect.height * 0.25
-            let y2 = rect.minY + rect.height * 0.75
-            let dot1 = CGRect(x: x - dotRadius, y: y1 - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-            let dot2 = CGRect(x: x - dotRadius, y: y2 - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-            context.fill(Path(ellipseIn: dot1), with: .color(.white.opacity(0.25)))
-            context.fill(Path(ellipseIn: dot2), with: .color(.white.opacity(0.25)))
+        // Interpolate between nearest calibrated frets
+        let frets = Self.calibratedFrets
+        var lowerFret = frets[0]
+        var upperFret = frets[frets.count - 1]
+
+        for i in 0..<(frets.count - 1) {
+            if frets[i] <= fret && fret <= frets[i + 1] {
+                lowerFret = frets[i]
+                upperFret = frets[i + 1]
+                break
+            }
         }
-    }
 
-    private func drawStrings(context: GraphicsContext, rect: CGRect) {
-        for stringIndex in 0..<5 {
-            let y = Self.stringY(string: stringIndex, in: rect)
-            let thickness = CGFloat(1.0 + Double(stringIndex) * 0.6)
-            var path = Path()
-            path.move(to: CGPoint(x: rect.minX, y: y))
-            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+        let lowerKey = "\(stringIdx)-\(lowerFret)"
+        let upperKey = "\(stringIdx)-\(upperFret)"
 
-            // Metallic string color
-            let color = Color(white: 0.85, opacity: 0.9)
-            context.stroke(path, with: .color(color), lineWidth: thickness)
+        guard let lower = Self.calibratedPositions[lowerKey],
+              let upper = Self.calibratedPositions[upperKey],
+              upperFret != lowerFret else {
+            // Fallback: center of view
+            return CGPoint(x: viewWidth / 2, y: viewHeight / 2)
         }
-    }
 
-    private func drawFretNumbers(context: GraphicsContext, rect: CGRect) {
-        let displayFrets = [0, 3, 5, 7, 9, 12, 15, 17, 19, 21, 24]
-        for fret in displayFrets {
-            let x = Self.fretMidX(fret: fret, in: rect)
-            let y = rect.maxY + 12
-            let text = Text("\(fret)")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.secondary)
-            context.draw(context.resolve(text), at: CGPoint(x: x, y: y))
-        }
-    }
+        let ratio = CGFloat(fret - lowerFret) / CGFloat(upperFret - lowerFret)
+        let x = (lower.x + (upper.x - lower.x) * ratio) * scale
+        let y = (lower.y + (upper.y - lower.y) * ratio) * scale
 
-    // MARK: - Position Calculations
-
-    static func fretX(fret: Int, in rect: CGRect) -> CGFloat {
-        guard fret > 0 else { return rect.minX }
-        let position = 1.0 - pow(0.5, Double(fret) / 12.0)
-        let normalized = position / maxFretNormalized
-        return rect.minX + CGFloat(normalized) * rect.width
-    }
-
-    static func fretMidX(fret: Int, in rect: CGRect) -> CGFloat {
-        let current = fretX(fret: fret, in: rect)
-        let previous = fret > 0 ? fretX(fret: fret - 1, in: rect) : rect.minX
-        return (current + previous) / 2
-    }
-
-    static func stringY(string: Int, in rect: CGRect) -> CGFloat {
-        let padding: CGFloat = 15
-        let usableHeight = rect.height - 2 * padding
-        return rect.minY + padding + CGFloat(string) * usableHeight / 4.0
-    }
-
-    private func targetPoint(position: FretPosition, in rect: CGRect) -> CGPoint {
-        let x: CGFloat
-        if position.fret == 0 {
-            x = rect.minX - 8 // Slightly left of nut for open string
-        } else {
-            x = Self.fretMidX(fret: position.fret, in: rect)
-        }
-        let y = Self.stringY(string: position.string.rawValue, in: rect)
         return CGPoint(x: x, y: y)
     }
 }

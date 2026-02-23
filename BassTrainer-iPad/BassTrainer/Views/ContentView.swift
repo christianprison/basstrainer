@@ -52,17 +52,13 @@ struct ContentView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
-                    // Fretboard
+                    // Fretboard (real bass photo with perspective)
                     FretboardView(
                         currentPosition: viewModel.currentPosition,
                         isPlaying: viewModel.isPlaying,
                         levelColor: viewModel.currentLevel.color
                     )
-                    .frame(height: fretboardHeight)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.secondarySystemBackground))
-                    )
+                    .aspectRatio(4019.0 / 332.0, contentMode: .fit)
 
                     // Note input buttons
                     if viewModel.isPlaying && !viewModel.gameComplete {
@@ -122,12 +118,6 @@ struct ContentView: View {
     }
 
     // MARK: - Subviews
-
-    private var fretboardHeight: CGFloat {
-        // Adapt to screen size
-        let screenHeight = UIScreen.main.bounds.height
-        return max(120, min(200, screenHeight * 0.18))
-    }
 
     private var timerBar: some View {
         VStack(spacing: 4) {

@@ -1,16 +1,15 @@
 import AVFoundation
 import Foundation
 
-/// Audio engine that plays bass note samples and synthesized sound effects.
-/// Downloads MP3 samples from remote storage on first use and caches them locally.
-/// Falls back to synthesized tones if samples are unavailable.
+/// Audio engine built on AVAudioPlayer for maximum device compatibility.
+/// MP3 samples are downloaded and cached to disk; synth sounds are generated
+/// as in-memory WAV data. No AVAudioEngine usage — avoids hardware node crashes.
 final class AudioEngine: ObservableObject {
-    private var engine: AVAudioEngine?
-    private var audioBuffers: [String: AVAudioPCMBuffer] = [:]
-    private var isEngineRunning = false
+    @Published var isLoaded = false
+    private var activePlayers: [AVAudioPlayer] = []
     private let cacheDirectory: URL
+    private let sampleRate: Double = 44100.0
 
-    // Remote audio sample URLs (same as the web version)
     private let audioSources: [String: String] = [
         "B_000": "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/B_000-HuarDXlqG9k2obnYN6LzuNHMSpWcGV.mp3",
         "B_001": "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/B_001-f3OrO0SgJPFxvx7rX2aA0oMP3AqEeG.mp3",
@@ -83,57 +82,79 @@ final class AudioEngine: ObservableObject {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         cacheDirectory = caches.appendingPathComponent("BassAudioCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-        setupAudioSession()
-        setupEngine()
-    }
 
-    // MARK: - Setup
-
-    private func setupAudioSession() {
+        // Set up audio session immediately — not lazily
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
+            print("[Audio] Session active")
         } catch {
-            print("[Audio] Failed to setup audio session: \(error)")
+            print("[Audio] Session setup failed: \(error)")
         }
     }
 
-    private func setupEngine() {
-        engine = AVAudioEngine()
-        do {
-            try engine?.start()
-            isEngineRunning = true
-        } catch {
-            print("[Audio] Failed to start engine: \(error)")
-        }
+    // MARK: - Cache helpers
+
+    private func cachedFileURL(for key: String) -> URL {
+        cacheDirectory.appendingPathComponent("\(key).mp3")
+    }
+
+    private func sampleExists(for key: String) -> Bool {
+        FileManager.default.fileExists(atPath: cachedFileURL(for: key).path)
     }
 
     // MARK: - Preload
 
     func preload() async {
-        let keysToPreload = Array(audioSources.keys.prefix(10))
+        let allKeys = Array(audioSources.keys)
         await withTaskGroup(of: Void.self) { group in
-            for key in keysToPreload {
-                group.addTask { [weak self] in
-                    await self?.loadAudioBuffer(key: key)
+            var inFlight = 0
+            for key in allKeys {
+                if sampleExists(for: key) { continue }
+                if inFlight >= 6 {
+                    await group.next()
+                    inFlight -= 1
                 }
+                let urlString = audioSources[key]!
+                let cachedFile = cachedFileURL(for: key)
+                group.addTask {
+                    guard let url = URL(string: urlString) else { return }
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: url)
+                        try data.write(to: cachedFile)
+                        print("[Audio] Downloaded: \(key)")
+                    } catch {
+                        print("[Audio] Download failed \(key): \(error)")
+                    }
+                }
+                inFlight += 1
             }
         }
-        print("[Audio] Preload complete")
+        await MainActor.run { isLoaded = true }
+        print("[Audio] Preload complete – \(allKeys.count) samples")
     }
 
     // MARK: - Play Bass Note
 
     func playBassNote(position: FretPosition) {
         let key = position.audioKey
-        if let buffer = audioBuffers[key] {
-            playBuffer(buffer)
+        let fileURL = cachedFileURL(for: key)
+
+        if sampleExists(for: key) {
+            playFile(fileURL)
         } else {
-            // Load on demand, play synth fallback immediately
             playSynthBass(frequency: position.frequency)
+            let urlString = audioSources[key]
             Task {
-                await loadAudioBuffer(key: key)
+                guard let urlStr = urlString, let url = URL(string: urlStr) else { return }
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    try data.write(to: fileURL)
+                    print("[Audio] Downloaded on demand: \(key)")
+                } catch {
+                    print("[Audio] On-demand download failed \(key): \(error)")
+                }
             }
         }
     }
@@ -141,243 +162,180 @@ final class AudioEngine: ObservableObject {
     // MARK: - Synthesized Sounds
 
     func playSynthBass(frequency: Double, duration: Double = 0.8) {
-        guard let engine = engine, isEngineRunning else { return }
+        let frameCount = Int(sampleRate * duration)
+        var samples = [Float](repeating: 0, count: frameCount)
 
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
-
-        let data = buffer.floatChannelData![0]
-        for i in 0..<Int(frameCount) {
+        for i in 0..<frameCount {
             let t = Double(i) / sampleRate
             let envelope = exp(-t * 3.0) * 0.4
-            // Fundamental + harmonics for bass-like tone
             let fundamental = sin(2.0 * .pi * frequency * t)
             let harmonic2 = sin(2.0 * .pi * frequency * 2.0 * t) * 0.3
             let harmonic3 = sin(2.0 * .pi * frequency * 3.0 * t) * 0.1
-            data[i] = Float(envelope * (fundamental + harmonic2 + harmonic3))
+            samples[i] = Float(envelope * (fundamental + harmonic2 + harmonic3))
         }
 
-        let playerNode = AVAudioPlayerNode()
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        playerNode.scheduleBuffer(buffer) {
-            DispatchQueue.main.async {
-                engine.detach(playerNode)
-            }
-        }
-        playerNode.play()
+        playSamples(samples)
     }
 
     func playFanfare() {
-        guard let engine = engine, isEngineRunning else { return }
-
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
-
         let notes: [(freq: Double, start: Double)] = [
-            (523.25, 0.0),   // C5
-            (659.25, 0.15),  // E5
-            (783.99, 0.30),  // G5
-            (1046.50, 0.45), // C6
+            (523.25, 0.0), (659.25, 0.15), (783.99, 0.30), (1046.50, 0.45),
         ]
         let totalDuration = 0.75
-        let frameCount = AVAudioFrameCount(sampleRate * totalDuration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
-
-        let data = buffer.floatChannelData![0]
-        for i in 0..<Int(frameCount) {
-            data[i] = 0
-        }
+        let frameCount = Int(sampleRate * totalDuration)
+        var samples = [Float](repeating: 0, count: frameCount)
 
         for note in notes {
             let startFrame = Int(note.start * sampleRate)
-            let noteDuration = 0.3
-            let noteFrames = Int(noteDuration * sampleRate)
+            let noteFrames = Int(0.3 * sampleRate)
             for j in 0..<noteFrames {
                 let frame = startFrame + j
-                guard frame < Int(frameCount) else { break }
+                guard frame < frameCount else { break }
                 let t = Double(j) / sampleRate
                 let envelope = exp(-t * 5.0) * 0.3
-                let sample = sin(2.0 * .pi * note.freq * t)
-                data[frame] += Float(envelope * sample)
+                samples[frame] += Float(envelope * sin(2.0 * .pi * note.freq * t))
             }
         }
 
-        let playerNode = AVAudioPlayerNode()
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        playerNode.scheduleBuffer(buffer) {
-            DispatchQueue.main.async {
-                engine.detach(playerNode)
-            }
-        }
-        playerNode.play()
+        playSamples(samples)
     }
 
     func playFireworks() {
-        guard let engine = engine, isEngineRunning else { return }
-
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         let totalDuration = 1.5
-        let frameCount = AVAudioFrameCount(sampleRate * totalDuration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
+        let frameCount = Int(sampleRate * totalDuration)
+        var samples = [Float](repeating: 0, count: frameCount)
 
-        let data = buffer.floatChannelData![0]
-        for i in 0..<Int(frameCount) {
-            data[i] = 0
-        }
-
-        // Puff sound (low thud)
         let puffFrames = Int(0.15 * sampleRate)
         for i in 0..<puffFrames {
             let t = Double(i) / sampleRate
             let freq = 80.0 * exp(-t * 10.0)
             let envelope = exp(-t * 20.0) * 0.3
-            data[i] = Float(envelope * sin(2.0 * .pi * freq * t))
+            samples[i] = Float(envelope * sin(2.0 * .pi * freq * t))
         }
 
-        // Crackle sounds (random noise bursts)
         let crackleStart = Int(0.55 * sampleRate)
         for _ in 0..<15 {
             let offset = Int(Double.random(in: 0..<0.8) * sampleRate)
             let burstLength = Int(Double.random(in: 0.02...0.05) * sampleRate)
             for j in 0..<burstLength {
                 let frame = crackleStart + offset + j
-                guard frame < Int(frameCount) else { break }
+                guard frame < frameCount else { break }
                 let t = Double(j) / Double(burstLength)
                 let envelope = (1.0 - t) * Double.random(in: 0.05...0.15)
-                data[frame] += Float(envelope * Double.random(in: -1...1))
+                samples[frame] += Float(envelope * Double.random(in: -1...1))
             }
         }
 
-        let playerNode = AVAudioPlayerNode()
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        playerNode.scheduleBuffer(buffer) {
-            DispatchQueue.main.async {
-                engine.detach(playerNode)
-            }
-        }
-        playerNode.play()
+        playSamples(samples)
     }
 
     func playGroove(beatNumber: Int) {
-        guard let engine = engine, isEngineRunning else { return }
-
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         let duration = 0.15
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
-
-        let data = buffer.floatChannelData![0]
-        for i in 0..<Int(frameCount) {
-            data[i] = 0
-        }
+        let frameCount = Int(sampleRate * duration)
+        var samples = [Float](repeating: 0, count: frameCount)
 
         let beat = beatNumber % 4
 
-        // Kick on beats 0 and 2
         if beat == 0 || beat == 2 {
-            for i in 0..<Int(frameCount) {
+            for i in 0..<frameCount {
                 let t = Double(i) / sampleRate
                 let freq = 150.0 * exp(-t * 20.0)
                 let envelope = exp(-t * 15.0) * 0.6
-                data[i] += Float(envelope * sin(2.0 * .pi * freq * t))
+                samples[i] += Float(envelope * sin(2.0 * .pi * freq * t))
             }
         }
 
-        // Snare on beats 1 and 3
         if beat == 1 || beat == 3 {
-            for i in 0..<Int(frameCount) {
+            for i in 0..<frameCount {
                 let t = Double(i) / sampleRate
                 let envelope = exp(-t * 20.0) * 0.3
                 let tone = sin(2.0 * .pi * 200.0 * t) * 0.5
                 let noise = Double.random(in: -1...1)
-                data[i] += Float(envelope * (tone + noise))
+                samples[i] += Float(envelope * (tone + noise))
             }
         }
 
-        // Hi-hat on every beat
-        let hihatFrames = min(Int(0.03 * sampleRate), Int(frameCount))
+        let hihatFrames = min(Int(0.03 * sampleRate), frameCount)
         for i in 0..<hihatFrames {
             let t = Double(i) / sampleRate
             let envelope = exp(-t * 100.0) * 0.15
-            data[i] += Float(envelope * Double.random(in: -1...1))
+            samples[i] += Float(envelope * Double.random(in: -1...1))
         }
 
-        let playerNode = AVAudioPlayerNode()
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        playerNode.scheduleBuffer(buffer) {
-            DispatchQueue.main.async {
-                engine.detach(playerNode)
-            }
-        }
-        playerNode.play()
+        playSamples(samples)
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Private: WAV Playback
 
-    private func loadAudioBuffer(key: String) async {
-        guard audioBuffers[key] == nil, let urlString = audioSources[key] else { return }
+    private func playSamples(_ samples: [Float]) {
+        // Build WAV data in memory
+        let wavData = buildWav(samples: samples)
 
-        // Check local cache first
-        let cachedFile = cacheDirectory.appendingPathComponent("\(key).mp3")
-        var audioData: Data?
+        // Clean up finished players
+        activePlayers.removeAll { !$0.isPlaying }
 
-        if FileManager.default.fileExists(atPath: cachedFile.path) {
-            audioData = try? Data(contentsOf: cachedFile)
-        } else {
-            // Download from remote
-            guard let url = URL(string: urlString) else { return }
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                audioData = data
-                try? data.write(to: cachedFile)
-            } catch {
-                print("[Audio] Failed to download \(key): \(error)")
-                return
-            }
-        }
-
-        guard let data = audioData else { return }
-
-        // Decode MP3 to PCM buffer
         do {
-            let tempFile = cacheDirectory.appendingPathComponent("\(key)_temp.mp3")
-            try data.write(to: tempFile)
-            let audioFile = try AVAudioFile(forReading: tempFile)
-            let format = audioFile.processingFormat
-            let frameCount = AVAudioFrameCount(audioFile.length)
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-            try audioFile.read(into: buffer)
-            audioBuffers[key] = buffer
-            try? FileManager.default.removeItem(at: tempFile)
-            print("[Audio] Loaded: \(key)")
+            // fileTypeHint is critical — without it AVAudioPlayer may not recognize in-memory WAV
+            let player = try AVAudioPlayer(data: wavData, fileTypeHint: AVFileType.wav.rawValue)
+            player.volume = 1.0
+            player.prepareToPlay()
+            player.play()
+            activePlayers.append(player)
+            print("[Audio] Playing synth sound (\(samples.count) samples, \(activePlayers.count) active)")
         } catch {
-            print("[Audio] Failed to decode \(key): \(error)")
+            print("[Audio] Synth play FAILED: \(error)")
         }
     }
 
-    private func playBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let engine = engine, isEngineRunning else { return }
+    private func buildWav(samples: [Float]) -> Data {
+        let numChannels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let sr = UInt32(sampleRate)
+        let byteRate = sr * UInt32(numChannels) * UInt32(bitsPerSample / 8)
+        let blockAlign = numChannels * (bitsPerSample / 8)
+        let dataSize = UInt32(samples.count) * UInt32(blockAlign)
 
-        let playerNode = AVAudioPlayerNode()
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
-        playerNode.scheduleBuffer(buffer) {
-            DispatchQueue.main.async {
-                engine.detach(playerNode)
-            }
+        var d = Data(capacity: 44 + Int(dataSize))
+
+        // RIFF header
+        d.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
+        withUnsafeBytes(of: (36 + dataSize).littleEndian) { d.append(contentsOf: $0) }
+        d.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
+
+        // fmt chunk
+        d.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
+        withUnsafeBytes(of: UInt32(16).littleEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt16(1).littleEndian) { d.append(contentsOf: $0) } // PCM
+        withUnsafeBytes(of: numChannels.littleEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: sr.littleEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: byteRate.littleEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: blockAlign.littleEndian) { d.append(contentsOf: $0) }
+        withUnsafeBytes(of: bitsPerSample.littleEndian) { d.append(contentsOf: $0) }
+
+        // data chunk
+        d.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
+        withUnsafeBytes(of: dataSize.littleEndian) { d.append(contentsOf: $0) }
+
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            let int16 = Int16(clamped * Float(Int16.max))
+            withUnsafeBytes(of: int16.littleEndian) { d.append(contentsOf: $0) }
         }
-        playerNode.play()
+
+        return d
+    }
+
+    private func playFile(_ url: URL) {
+        activePlayers.removeAll { !$0.isPlaying }
+        do {
+            let player = try AVAudioPlayer(contentsOf: url, fileTypeHint: AVFileType.mp3.rawValue)
+            player.volume = 1.0
+            player.prepareToPlay()
+            player.play()
+            activePlayers.append(player)
+            print("[Audio] Playing file: \(url.lastPathComponent) (\(activePlayers.count) active)")
+        } catch {
+            print("[Audio] File play FAILED: \(error)")
+        }
     }
 }

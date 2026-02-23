@@ -1,0 +1,427 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A100000100000000000000AA /* BassTrainerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000AA /* BassTrainerApp.swift */; };
+		A100000200000000000000AA /* MusicTheory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000200000000000000AA /* MusicTheory.swift */; };
+		A100000300000000000000AA /* LearningLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000300000000000000AA /* LearningLevel.swift */; };
+		A100000400000000000000AA /* GameModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000400000000000000AA /* GameModels.swift */; };
+		A100000500000000000000AA /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000500000000000000AA /* GameViewModel.swift */; };
+		A100000600000000000000AA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000600000000000000AA /* ContentView.swift */; };
+		A100000700000000000000AA /* FretboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000700000000000000AA /* FretboardView.swift */; };
+		A100000800000000000000AA /* NoteButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000800000000000000AA /* NoteButtonsView.swift */; };
+		A100000900000000000000AA /* StatsHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000900000000000000AA /* StatsHeaderView.swift */; };
+		A100000A00000000000000AA /* BalanceGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A00000000000000AA /* BalanceGaugeView.swift */; };
+		A100000B00000000000000AA /* ResponseTimeChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B00000000000000AA /* ResponseTimeChartView.swift */; };
+		A100000C00000000000000AA /* ConfettiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C00000000000000AA /* ConfettiView.swift */; };
+		A100000D00000000000000AA /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D00000000000000AA /* AudioEngine.swift */; };
+		A100000E00000000000000AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A200000E00000000000000AA /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A200000100000000000000AA /* BassTrainerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BassTrainerApp.swift; sourceTree = "<group>"; };
+		A200000200000000000000AA /* MusicTheory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicTheory.swift; sourceTree = "<group>"; };
+		A200000300000000000000AA /* LearningLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningLevel.swift; sourceTree = "<group>"; };
+		A200000400000000000000AA /* GameModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameModels.swift; sourceTree = "<group>"; };
+		A200000500000000000000AA /* GameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModel.swift; sourceTree = "<group>"; };
+		A200000600000000000000AA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A200000700000000000000AA /* FretboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FretboardView.swift; sourceTree = "<group>"; };
+		A200000800000000000000AA /* NoteButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteButtonsView.swift; sourceTree = "<group>"; };
+		A200000900000000000000AA /* StatsHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsHeaderView.swift; sourceTree = "<group>"; };
+		A200000A00000000000000AA /* BalanceGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceGaugeView.swift; sourceTree = "<group>"; };
+		A200000B00000000000000AA /* ResponseTimeChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseTimeChartView.swift; sourceTree = "<group>"; };
+		A200000C00000000000000AA /* ConfettiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfettiView.swift; sourceTree = "<group>"; };
+		A200000D00000000000000AA /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
+		A200000E00000000000000AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A200000F00000000000000AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A200001000000000000000AA /* BassTrainer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BassTrainer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A300000100000000000000AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A400000100000000000000AA = {
+			isa = PBXGroup;
+			children = (
+				A400000200000000000000AA /* BassTrainer */,
+				A400000800000000000000AA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A400000200000000000000AA /* BassTrainer */ = {
+			isa = PBXGroup;
+			children = (
+				A400000300000000000000AA /* App */,
+				A400000400000000000000AA /* Models */,
+				A400000500000000000000AA /* ViewModels */,
+				A400000600000000000000AA /* Views */,
+				A400000700000000000000AA /* Services */,
+				A400000900000000000000AA /* Resources */,
+			);
+			path = BassTrainer;
+			sourceTree = "<group>";
+		};
+		A400000300000000000000AA /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A200000100000000000000AA /* BassTrainerApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A400000400000000000000AA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A200000200000000000000AA /* MusicTheory.swift */,
+				A200000300000000000000AA /* LearningLevel.swift */,
+				A200000400000000000000AA /* GameModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A400000500000000000000AA /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				A200000500000000000000AA /* GameViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		A400000600000000000000AA /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A200000600000000000000AA /* ContentView.swift */,
+				A200000700000000000000AA /* FretboardView.swift */,
+				A200000800000000000000AA /* NoteButtonsView.swift */,
+				A200000900000000000000AA /* StatsHeaderView.swift */,
+				A200000A00000000000000AA /* BalanceGaugeView.swift */,
+				A200000B00000000000000AA /* ResponseTimeChartView.swift */,
+				A200000C00000000000000AA /* ConfettiView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A400000700000000000000AA /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A200000D00000000000000AA /* AudioEngine.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A400000800000000000000AA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A200001000000000000000AA /* BassTrainer.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A400000900000000000000AA /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A200000E00000000000000AA /* Assets.xcassets */,
+				A200000F00000000000000AA /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A500000100000000000000AA /* BassTrainer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A700000300000000000000AA /* Build configuration list for PBXNativeTarget "BassTrainer" */;
+			buildPhases = (
+				A600000100000000000000AA /* Sources */,
+				A600000200000000000000AA /* Resources */,
+				A300000100000000000000AA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BassTrainer;
+			productName = BassTrainer;
+			productReference = A200001000000000000000AA /* BassTrainer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A400000100000000000000AB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A500000100000000000000AA = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A700000100000000000000AA /* Build configuration list for PBXProject "BassTrainer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A400000100000000000000AA;
+			productRefGroup = A400000800000000000000AA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A500000100000000000000AA /* BassTrainer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A600000200000000000000AA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A100000E00000000000000AA /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A600000100000000000000AA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A100000100000000000000AA /* BassTrainerApp.swift in Sources */,
+				A100000200000000000000AA /* MusicTheory.swift in Sources */,
+				A100000300000000000000AA /* LearningLevel.swift in Sources */,
+				A100000400000000000000AA /* GameModels.swift in Sources */,
+				A100000500000000000000AA /* GameViewModel.swift in Sources */,
+				A100000600000000000000AA /* ContentView.swift in Sources */,
+				A100000700000000000000AA /* FretboardView.swift in Sources */,
+				A100000800000000000000AA /* NoteButtonsView.swift in Sources */,
+				A100000900000000000000AA /* StatsHeaderView.swift in Sources */,
+				A100000A00000000000000AA /* BalanceGaugeView.swift in Sources */,
+				A100000B00000000000000AA /* ResponseTimeChartView.swift in Sources */,
+				A100000C00000000000000AA /* ConfettiView.swift in Sources */,
+				A100000D00000000000000AA /* AudioEngine.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A800000100000000000000AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A800000200000000000000AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A800000300000000000000AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BassTrainer/Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.basstrainer.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+		A800000400000000000000AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BassTrainer/Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.basstrainer.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A700000100000000000000AA /* Build configuration list for PBXProject "BassTrainer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A800000100000000000000AA /* Debug */,
+				A800000200000000000000AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A700000300000000000000AA /* Build configuration list for PBXNativeTarget "BassTrainer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A800000300000000000000AA /* Debug */,
+				A800000400000000000000AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A400000100000000000000AB /* Project object */;
+}
