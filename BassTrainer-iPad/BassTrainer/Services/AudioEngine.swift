@@ -267,12 +267,13 @@ final class AudioEngine: ObservableObject {
 
     private func playWavData(_ samples: [Float]) {
         let data = wavData(from: samples)
+        // Clean up finished players first, before adding new ones
+        activePlayers.removeAll { !$0.isPlaying }
         do {
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             player.play()
             activePlayers.append(player)
-            activePlayers.removeAll { !$0.isPlaying }
         } catch {
             print("[Audio] Synth play failed: \(error)")
         }
@@ -354,12 +355,12 @@ final class AudioEngine: ObservableObject {
     }
 
     private func playFile(_ url: URL) {
+        activePlayers.removeAll { !$0.isPlaying }
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             player.prepareToPlay()
             player.play()
             activePlayers.append(player)
-            activePlayers.removeAll { !$0.isPlaying }
         } catch {
             print("[Audio] File play failed: \(error)")
         }
