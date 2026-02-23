@@ -91,14 +91,6 @@ struct FretboardView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: renderedWidth)
 
-                // Highlights overlay (dot markers from photo)
-                Image("BassHighlights")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: renderedWidth)
-                    .blendMode(.screen)
-                    .opacity(0.4)
-
                 // Target dot
                 if let position = currentPosition, isPlaying {
                     let point = notePosition(
