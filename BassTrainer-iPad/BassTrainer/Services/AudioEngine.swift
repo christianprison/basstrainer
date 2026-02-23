@@ -3,11 +3,12 @@ import Foundation
 
 /// Audio engine built on AVAudioPlayer (not AVAudioEngine) for maximum
 /// compatibility across real devices and the Simulator.
-/// MP3 samples are downloaded and cached; synth sounds are generated as
-/// in-memory WAV data.
+/// MP3 samples are downloaded and cached to disk; synth sounds are generated
+/// as in-memory WAV data.
+@MainActor
 final class AudioEngine: ObservableObject {
-    private var cachedPlayers: [String: URL] = [:]        // key -> local file URL
-    private var activePlayers: [AVAudioPlayer] = []       // keep strong refs
+    @Published var isLoaded = false
+    private var activePlayers: [AVAudioPlayer] = []
     private var sessionReady = false
     private let cacheDirectory: URL
     private let sampleRate: Double = 44100.0
@@ -101,18 +102,38 @@ final class AudioEngine: ObservableObject {
         }
     }
 
+    // MARK: - Cache path helper
+
+    private func cachedFileURL(for key: String) -> URL {
+        cacheDirectory.appendingPathComponent("\(key).mp3")
+    }
+
+    private func sampleExists(for key: String) -> Bool {
+        FileManager.default.fileExists(atPath: cachedFileURL(for: key).path)
+    }
+
     // MARK: - Preload
 
     func preload() async {
-        let keysToPreload = Array(audioSources.keys.prefix(15))
+        // Download ALL samples, not just a subset
+        let allKeys = Array(audioSources.keys)
+        // Use up to 6 concurrent downloads
         await withTaskGroup(of: Void.self) { group in
-            for key in keysToPreload {
+            var inFlight = 0
+            for key in allKeys {
+                if sampleExists(for: key) { continue }
+                if inFlight >= 6 {
+                    await group.next()
+                    inFlight -= 1
+                }
                 group.addTask { [weak self] in
                     await self?.downloadSample(key: key)
                 }
+                inFlight += 1
             }
         }
-        print("[Audio] Preload complete (\(cachedPlayers.count) samples)")
+        isLoaded = true
+        print("[Audio] Preload complete – all \(allKeys.count) samples ready")
     }
 
     // MARK: - Play Bass Note
@@ -120,10 +141,11 @@ final class AudioEngine: ObservableObject {
     func playBassNote(position: FretPosition) {
         ensureSession()
         let key = position.audioKey
-        if let fileURL = cachedPlayers[key] {
+        let fileURL = cachedFileURL(for: key)
+
+        if sampleExists(for: key) {
             playFile(fileURL)
         } else {
-            // Play synth fallback while downloading
             playSynthBass(frequency: position.frequency)
             Task {
                 await downloadSample(key: key)
@@ -180,7 +202,6 @@ final class AudioEngine: ObservableObject {
         let frameCount = Int(sampleRate * totalDuration)
         var samples = [Float](repeating: 0, count: frameCount)
 
-        // Puff
         let puffFrames = Int(0.15 * sampleRate)
         for i in 0..<puffFrames {
             let t = Double(i) / sampleRate
@@ -189,7 +210,6 @@ final class AudioEngine: ObservableObject {
             samples[i] = Float(envelope * sin(2.0 * .pi * freq * t))
         }
 
-        // Crackle
         let crackleStart = Int(0.55 * sampleRate)
         for _ in 0..<15 {
             let offset = Int(Double.random(in: 0..<0.8) * sampleRate)
@@ -245,16 +265,13 @@ final class AudioEngine: ObservableObject {
 
     // MARK: - Private: WAV Generation
 
-    /// Build a 16-bit mono WAV file in memory from Float samples and play it.
     private func playWavData(_ samples: [Float]) {
         let data = wavData(from: samples)
         do {
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             player.play()
-            // Keep a strong reference until playback finishes
             activePlayers.append(player)
-            // Clean up finished players periodically
             activePlayers.removeAll { !$0.isPlaying }
         } catch {
             print("[Audio] Synth play failed: \(error)")
@@ -278,8 +295,8 @@ final class AudioEngine: ObservableObject {
 
         // fmt chunk
         data.append(contentsOf: [UInt8]("fmt ".utf8))
-        appendUInt32(&data, 16)                        // chunk size
-        appendUInt16(&data, 1)                         // PCM format
+        appendUInt32(&data, 16)
+        appendUInt16(&data, 1)
         appendUInt16(&data, numChannels)
         appendUInt32(&data, sampleRateInt)
         appendUInt32(&data, byteRate)
@@ -314,23 +331,22 @@ final class AudioEngine: ObservableObject {
         data.append(Data(bytes: &v, count: 2))
     }
 
-    // MARK: - Private: MP3 Sample Management
+    // MARK: - Private: MP3 Download
 
-    private func downloadSample(key: String) async {
-        guard cachedPlayers[key] == nil, let urlString = audioSources[key] else { return }
+    private nonisolated func downloadSample(key: String) async {
+        // Capture what we need from self before going off the main actor
+        let cacheDir = await cacheDirectory
+        let sources = await audioSources
 
-        let cachedFile = cacheDirectory.appendingPathComponent("\(key).mp3")
+        guard let urlString = sources[key] else { return }
+        let cachedFile = cacheDir.appendingPathComponent("\(key).mp3")
 
-        if FileManager.default.fileExists(atPath: cachedFile.path) {
-            cachedPlayers[key] = cachedFile
-            return
-        }
+        if FileManager.default.fileExists(atPath: cachedFile.path) { return }
 
         guard let url = URL(string: urlString) else { return }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             try data.write(to: cachedFile)
-            cachedPlayers[key] = cachedFile
             print("[Audio] Downloaded: \(key)")
         } catch {
             print("[Audio] Download failed \(key): \(error)")
