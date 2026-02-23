@@ -1,0 +1,53 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0D1B2A"/>
+      <stop offset="100%" stop-color="#1A3150"/>
+    </linearGradient>
+    <linearGradient id="clef-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#C8DEFF"/>
+    </linearGradient>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="225" fill="url(#bg)"/>
+
+  <!-- Subtle staff lines (4 lines for bass) -->
+  <g opacity="0.07" stroke="white" stroke-width="2.5">
+    <line x1="160" y1="320" x2="864" y2="320"/>
+    <line x1="160" y1="420" x2="864" y2="420"/>
+    <line x1="160" y1="520" x2="864" y2="520"/>
+    <line x1="160" y1="620" x2="864" y2="620"/>
+    <line x1="160" y1="720" x2="864" y2="720"/>
+  </g>
+
+  <!-- Bass Clef Symbol -->
+  <g filter="url(#glow)">
+    <!-- Main curved body of the bass clef -->
+    <path d="M 360 380
+             C 365 310, 440 245, 530 265
+             C 620 285, 670 365, 655 450
+             C 640 535, 565 605, 480 660
+             C 400 715, 350 760, 370 805
+             C 385 840, 425 855, 465 835"
+          stroke="url(#clef-gradient)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Ear dot (starting point of clef) -->
+    <circle cx="358" cy="382" r="44" fill="url(#clef-gradient)"/>
+
+    <!-- Two dots (colon) to the right -->
+    <circle cx="720" cy="355" r="34" fill="url(#clef-gradient)"/>
+    <circle cx="720" cy="475" r="34" fill="url(#clef-gradient)"/>
+  </g>
+
+  <!-- Subtle accent line at the bottom -->
+  <rect x="280" y="900" width="464" height="4" rx="2" fill="#4A7EE4" opacity="0.4"/>
+</svg>

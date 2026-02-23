@@ -8,9 +8,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "BassTrainer",
+  description: "Learn bass guitar notes and fretboard positions",
   icons: {
     icon: [
       {
