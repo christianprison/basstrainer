@@ -3,7 +3,7 @@
 // eine Kategorie mit Untereinträgen. "implemented: false" rendert einen
 // "Kommt bald"-Platzhalter.
 
-export type MenuMode = "fretboard" | "placeholder"
+export type MenuMode = "fretboard" | "precision-octaves" | "placeholder"
 
 export interface MenuItem {
   id: string
@@ -34,6 +34,12 @@ export const MAIN_MENU: MenuItem[] = [
     label: "Präzision",
     description: "Anschlag & Timing",
     children: [
+      {
+        id: "oktaven",
+        label: "Oktaven",
+        description: "Oktaven nach Metronom – progressives Tempo",
+        mode: "precision-octaves",
+      },
       { id: "pick", label: "Pick", description: "Präzision mit Plektrum", mode: "placeholder" },
       { id: "fingered", label: "Fingered", description: "Präzision mit Fingern", mode: "placeholder" },
     ],

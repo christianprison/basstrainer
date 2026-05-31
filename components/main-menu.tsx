@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react"
 import { MAIN_MENU, type MenuItem } from "@/lib/menu-config"
 import BassTrainer from "@/components/bass-trainer"
 import ComingSoon from "@/components/coming-soon"
+import PrecisionOctaves from "@/components/precision-octaves"
 
 // Navigations-Shell: rendert das Hauptmenü, Untermenüs, den echten
 // Griffbrett-Trainer oder einen "Kommt bald"-Platzhalter.
@@ -43,6 +44,9 @@ export default function MainMenu() {
           <BassTrainer />
         </div>
       )
+    }
+    if (active.mode === "precision-octaves") {
+      return <PrecisionOctaves onBack={() => setActive(null)} />
     }
     return <ComingSoon title={active.label} description={active.description} onBack={() => setActive(null)} />
   }
