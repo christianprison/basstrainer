@@ -100,6 +100,12 @@ export interface ListeningEngineOptions {
   refractoryMs?: number
   /** Tonhöhe bei jedem Anschlag mitberechnen. */
   detectPitch?: boolean
+  /**
+   * Tiefpass-Grenzfrequenz in Hz. Lässt die tiefen Bass-Grundtöne durch und
+   * dämpft hohe Anteile wie das durchblutende Metronom (800/1200 Hz Tick).
+   * 0 deaktiviert den Filter. Default: 250 Hz.
+   */
+  lowpassHz?: number
 }
 
 export class ListeningEngine {
@@ -113,9 +119,14 @@ export class ListeningEngine {
   private lastOnset = 0
   private running = false
 
+  // Knoten für Debug-Aufnahme: rohes (vor Filter) und gefiltertes Signal.
+  private rawNode: AudioNode | null = null
+  private filteredNode: AudioNode | null = null
+
   private readonly onsetThreshold: number
   private readonly refractoryMs: number
   private readonly wantPitch: boolean
+  private readonly lowpassHz: number
 
   onOnset?: (e: OnsetEvent) => void
   onPitch?: (p: PitchResult | null) => void
@@ -126,6 +137,7 @@ export class ListeningEngine {
     this.onsetThreshold = opts.onsetThreshold ?? 0.04
     this.refractoryMs = opts.refractoryMs ?? 120
     this.wantPitch = opts.detectPitch ?? true
+    this.lowpassHz = opts.lowpassHz ?? 250
   }
 
   get isRunning() {
@@ -145,7 +157,28 @@ export class ListeningEngine {
     const source = this.audioContext.createMediaStreamSource(this.stream)
     this.analyser = this.audioContext.createAnalyser()
     this.analyser.fftSize = 2048
-    source.connect(this.analyser)
+    this.rawNode = source
+
+    if (this.lowpassHz > 0) {
+      // Zwei kaskadierte Tiefpässe (~24 dB/Oktave): Bass-Grundtöne bleiben,
+      // der hohe Metronom-Tick (800/1200 Hz) wird stark gedämpft.
+      const lp1 = this.audioContext.createBiquadFilter()
+      const lp2 = this.audioContext.createBiquadFilter()
+      lp1.type = "lowpass"
+      lp2.type = "lowpass"
+      lp1.frequency.value = this.lowpassHz
+      lp2.frequency.value = this.lowpassHz
+      lp1.Q.value = 0.707
+      lp2.Q.value = 0.707
+      source.connect(lp1)
+      lp1.connect(lp2)
+      lp2.connect(this.analyser)
+      this.filteredNode = lp2
+    } else {
+      source.connect(this.analyser)
+      this.filteredNode = source
+    }
+
     this.timeBuf = new Float32Array(this.analyser.fftSize)
 
     this.running = true
@@ -192,8 +225,81 @@ export class ListeningEngine {
     this.rafId = requestAnimationFrame(this.loop)
   }
 
+  /**
+   * Zeichnet `durationMs` lang das Mikrofonsignal auf und gibt eine Stereo-WAV
+   * zurück: Kanal L = rohes Signal (vor Filter), Kanal R = gefiltertes Signal
+   * (nach Tiefpass). Für Debugging des Metronom-Bleeds und der Pegel.
+   * Liefert zusätzlich Spitzen-/RMS-Pegel beider Kanäle.
+   */
+  async recordDebug(durationMs = 6000): Promise<{
+    wav: Blob
+    sampleRate: number
+    rawPeak: number
+    rawRms: number
+    filteredPeak: number
+    filteredRms: number
+  }> {
+    if (!this.audioContext || !this.rawNode || !this.filteredNode) {
+      throw new Error("Engine not started")
+    }
+    const ctx = this.audioContext
+    const bufSize = 4096
+    const rawProc = ctx.createScriptProcessor(bufSize, 1, 1)
+    const filtProc = ctx.createScriptProcessor(bufSize, 1, 1)
+    const rawChunks: Float32Array[] = []
+    const filtChunks: Float32Array[] = []
+
+    rawProc.onaudioprocess = (e) => rawChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+    filtProc.onaudioprocess = (e) => filtChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+
+    // ScriptProcessor braucht eine Verbindung zum Destination, um zu laufen.
+    // Über einen stummen Gain, damit nichts hörbar zurückkommt.
+    const mute = ctx.createGain()
+    mute.gain.value = 0
+    this.rawNode.connect(rawProc)
+    this.filteredNode.connect(filtProc)
+    rawProc.connect(mute)
+    filtProc.connect(mute)
+    mute.connect(ctx.destination)
+
+    await new Promise((r) => setTimeout(r, durationMs))
+
+    rawProc.disconnect()
+    filtProc.disconnect()
+    mute.disconnect()
+
+    const raw = flatten(rawChunks)
+    const filt = flatten(filtChunks)
+    const n = Math.min(raw.length, filt.length)
+
+    let rawPeak = 0
+    let rawSum = 0
+    let filtPeak = 0
+    let filtSum = 0
+    for (let i = 0; i < n; i++) {
+      const a = Math.abs(raw[i])
+      const b = Math.abs(filt[i])
+      if (a > rawPeak) rawPeak = a
+      if (b > filtPeak) filtPeak = b
+      rawSum += raw[i] * raw[i]
+      filtSum += filt[i] * filt[i]
+    }
+
+    const wav = encodeWavStereo(raw.subarray(0, n), filt.subarray(0, n), ctx.sampleRate)
+    return {
+      wav,
+      sampleRate: ctx.sampleRate,
+      rawPeak,
+      rawRms: Math.sqrt(rawSum / n),
+      filteredPeak: filtPeak,
+      filteredRms: Math.sqrt(filtSum / n),
+    }
+  }
+
   stop(): void {
     this.running = false
+    this.rawNode = null
+    this.filteredNode = null
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.stream?.getTracks().forEach((t) => t.stop())
@@ -204,4 +310,57 @@ export class ListeningEngine {
     }
     this.audioContext = null
   }
+}
+
+function flatten(chunks: Float32Array[]): Float32Array {
+  let total = 0
+  for (const c of chunks) total += c.length
+  const out = new Float32Array(total)
+  let off = 0
+  for (const c of chunks) {
+    out.set(c, off)
+    off += c.length
+  }
+  return out
+}
+
+// Kodiert zwei Mono-Spuren als 16-bit PCM Stereo-WAV (L=left, R=right).
+function encodeWavStereo(left: Float32Array, right: Float32Array, sampleRate: number): Blob {
+  const numFrames = Math.min(left.length, right.length)
+  const numChannels = 2
+  const bytesPerSample = 2
+  const blockAlign = numChannels * bytesPerSample
+  const dataSize = numFrames * blockAlign
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+  }
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v))
+
+  writeStr(0, "RIFF")
+  view.setUint32(4, 36 + dataSize, true)
+  writeStr(8, "WAVE")
+  writeStr(12, "fmt ")
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * blockAlign, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 8 * bytesPerSample, true)
+  writeStr(36, "data")
+  view.setUint32(40, dataSize, true)
+
+  let off = 44
+  for (let i = 0; i < numFrames; i++) {
+    const l = clamp(left[i]) * 0x7fff
+    const r = clamp(right[i]) * 0x7fff
+    view.setInt16(off, l, true)
+    off += 2
+    view.setInt16(off, r, true)
+    off += 2
+  }
+  return new Blob([buffer], { type: "audio/wav" })
 }

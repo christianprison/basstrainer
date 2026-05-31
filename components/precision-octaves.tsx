@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ArrowLeft, Mic, Play, Square } from "lucide-react"
+import { ArrowLeft, Bug, Mic, Play, Square } from "lucide-react"
 import { ListeningEngine } from "@/lib/listening-engine"
 
 interface PrecisionOctavesProps {
@@ -35,6 +35,8 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
   const [lastHit, setLastHit] = useState<HitRating | null>(null)
   const [recentRatings, setRecentRatings] = useState<HitRating["rating"][]>([])
   const [stats, setStats] = useState({ perfect: 0, good: 0, ok: 0, miss: 0 })
+  const [recording, setRecording] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)
 
   const engineRef = useRef<ListeningEngine | null>(null)
   // Geplante Beat-Zeiten in performance.now()-Domain.
@@ -122,7 +124,12 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
   }, [])
 
   const startExercise = useCallback(async () => {
-    const engine = new ListeningEngine({ detectPitch: false, onsetThreshold: 0.05, refractoryMs: 100 })
+    const engine = new ListeningEngine({
+      detectPitch: false,
+      onsetThreshold: 0.035,
+      refractoryMs: 100,
+      lowpassHz: 250, // Metronom-Tick (hochfrequent) aus dem Mikrofonsignal filtern
+    })
     engine.onLevel = (rms) => setLevel(rms)
     engine.onOnset = (e) => evaluateOnset(e.time)
     engineRef.current = engine
@@ -172,6 +179,35 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
       }
     }, SCHED_INTERVAL)
   }, [evaluateOnset, maybeAdjustTempo, playTick])
+
+  const recordDebug = useCallback(async () => {
+    const engine = engineRef.current
+    if (!engine || recording) return
+    setRecording(true)
+    setDebugInfo("Nimm 6 s auf … bitte NICHT mitspielen, nur Metronom laufen lassen.")
+    try {
+      const res = await engine.recordDebug(6000)
+      const url = URL.createObjectURL(res.wav)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `mic-debug-${Date.now()}.wav`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+      const fmt = (v: number) => v.toFixed(4)
+      setDebugInfo(
+        `Aufnahme gespeichert (${res.sampleRate} Hz). ` +
+          `Roh: Peak ${fmt(res.rawPeak)}, RMS ${fmt(res.rawRms)} · ` +
+          `Gefiltert: Peak ${fmt(res.filteredPeak)}, RMS ${fmt(res.filteredRms)}. ` +
+          `WAV: links = roh, rechts = gefiltert.`,
+      )
+    } catch (e) {
+      setDebugInfo("Aufnahme fehlgeschlagen: " + (e as Error).message)
+    } finally {
+      setRecording(false)
+    }
+  }, [recording])
 
   useEffect(() => {
     return () => {
@@ -294,6 +330,17 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
               <div className="text-red-500">Miss: {stats.miss}</div>
             </CardContent>
           </Card>
+
+          <Button variant="secondary" onClick={recordDebug} disabled={recording}>
+            <Bug className="mr-2 h-4 w-4" />
+            {recording ? "Nimm auf …" : "Debug-Aufnahme (6 s)"}
+          </Button>
+
+          {debugInfo && (
+            <Card>
+              <CardContent className="py-3 text-xs text-muted-foreground">{debugInfo}</CardContent>
+            </Card>
+          )}
 
           <Button variant="outline" onClick={stopExercise}>
             <Square className="mr-2 h-4 w-4" />
