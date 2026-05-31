@@ -106,6 +106,12 @@ export interface ListeningEngineOptions {
    * 0 deaktiviert den Filter. Default: 250 Hz.
    */
   lowpassHz?: number
+  /**
+   * Verstärkung des analysierten Signals (Onset/Pitch/VU). Hebt sehr leise
+   * Mikrofone in einen brauchbaren Bereich. Default: 1 (keine Verstärkung).
+   * Der rohe Debug-Kanal bleibt davon unberührt.
+   */
+  inputGain?: number
 }
 
 export class ListeningEngine {
@@ -127,6 +133,9 @@ export class ListeningEngine {
   private readonly refractoryMs: number
   private readonly wantPitch: boolean
   private readonly lowpassHz: number
+  private readonly inputGain: number
+  // Gleitendes Maximum des Pegels für ein auto-skalierendes VU-Meter.
+  private levelMax = 0.01
 
   onOnset?: (e: OnsetEvent) => void
   onPitch?: (p: PitchResult | null) => void
@@ -138,6 +147,7 @@ export class ListeningEngine {
     this.refractoryMs = opts.refractoryMs ?? 120
     this.wantPitch = opts.detectPitch ?? true
     this.lowpassHz = opts.lowpassHz ?? 250
+    this.inputGain = opts.inputGain ?? 1
   }
 
   get isRunning() {
@@ -159,6 +169,11 @@ export class ListeningEngine {
     this.analyser.fftSize = 2048
     this.rawNode = source
 
+    // Optionaler Gain VOR dem Analyser hebt sehr leise Mikrofone an.
+    // Der Debug-Abgriff (filteredNode) liegt davor, bleibt also ungeboostet.
+    const gain = this.audioContext.createGain()
+    gain.gain.value = this.inputGain
+
     if (this.lowpassHz > 0) {
       // Zwei kaskadierte Tiefpässe (~24 dB/Oktave): Bass-Grundtöne bleiben,
       // der hohe Metronom-Tick (800/1200 Hz) wird stark gedämpft.
@@ -172,10 +187,12 @@ export class ListeningEngine {
       lp2.Q.value = 0.707
       source.connect(lp1)
       lp1.connect(lp2)
-      lp2.connect(this.analyser)
+      lp2.connect(gain)
+      gain.connect(this.analyser)
       this.filteredNode = lp2
     } else {
-      source.connect(this.analyser)
+      source.connect(gain)
+      gain.connect(this.analyser)
       this.filteredNode = source
     }
 
@@ -198,14 +215,19 @@ export class ListeningEngine {
     for (let i = 0; i < this.timeBuf.length; i++) sum += this.timeBuf[i] * this.timeBuf[i]
     const rms = Math.sqrt(sum / this.timeBuf.length)
 
-    this.onLevel?.(rms)
+    // Auto-skalierendes VU: relativ zum gleitenden Maximum, damit auch sehr
+    // leise Mikrofone vollen Ausschlag zeigen. Max langsam abklingen lassen.
+    if (rms > this.levelMax) this.levelMax = rms
+    else this.levelMax = Math.max(0.01, this.levelMax * 0.999)
+    this.onLevel?.(Math.min(1, rms / this.levelMax))
 
     // Adaptiver Rauschteppich (langsame EMA, nur wenn leise)
     if (rms < this.noiseFloor * 1.5) {
       this.noiseFloor = this.noiseFloor * 0.995 + rms * 0.005
     }
 
-    const dynamicThreshold = Math.max(this.onsetThreshold, this.noiseFloor * 4)
+    // Onset-Schwelle: tiefer absoluter Boden + relativ zum Rauschteppich.
+    const dynamicThreshold = Math.max(this.onsetThreshold, this.noiseFloor * 5)
     const now = performance.now()
     const rising = rms > dynamicThreshold && this.prevLevel <= dynamicThreshold
     if (rising && now - this.lastOnset > this.refractoryMs) {

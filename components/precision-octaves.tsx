@@ -126,9 +126,11 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
   const startExercise = useCallback(async () => {
     const engine = new ListeningEngine({
       detectPitch: false,
-      onsetThreshold: 0.035,
+      // Werte beziehen sich auf das um inputGain verstärkte Signal.
+      onsetThreshold: 0.06,
       refractoryMs: 100,
-      lowpassHz: 250, // Metronom-Tick (hochfrequent) aus dem Mikrofonsignal filtern
+      lowpassHz: 180, // Metronom-Tick (hochfrequent) stark dämpfen
+      inputGain: 25, // sehr leises Mikrofon in brauchbaren Bereich heben
     })
     engine.onLevel = (rms) => setLevel(rms)
     engine.onOnset = (e) => evaluateOnset(e.time)
