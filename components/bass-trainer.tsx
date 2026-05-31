@@ -304,7 +304,7 @@ class SimpleBeepGenerator {
 }
 
 class RealBassAudioEngine implements BassAudioEngine {
-  private audioContext: AudioContext | null = null
+  audioContext: AudioContext | null = null
   private audioBuffers: Map<string, AudioBuffer> = new Map()
   private _isUnlocked = false
   private beepGenerator = new SimpleBeepGenerator()
@@ -384,11 +384,6 @@ class RealBassAudioEngine implements BassAudioEngine {
 
   get isUnlocked(): boolean {
     return this._isUnlocked
-  }
-
-  // Add audioContext getter to the class
-  get audioContext(): AudioContext | null {
-    return this.audioContext
   }
 
   private getAudioKey(stringIndex: number, fret: number): string {
