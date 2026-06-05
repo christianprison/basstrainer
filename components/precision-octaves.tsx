@@ -19,13 +19,22 @@ const OK_MS = 160
 const START_BPM = 70
 const MIN_BPM = 50
 const MAX_BPM = 160
-const BEATS_PER_EVAL = 8 // nach so vielen Beats wird das Tempo angepasst
+const BEATS_PER_EVAL = 4 // nach so vielen abgeschlossenen Beats Tempo anpassen
 
 type Phase = "intro" | "running" | "denied"
 
 interface HitRating {
   delta: number // signierte Abweichung in ms (+ = zu spät)
   rating: "perfect" | "good" | "ok" | "miss"
+}
+
+// Ein geplanter Beat mit stabiler ID (kein Array-Index, der durch Beschneiden
+// verrutscht). "settled" = bereits getroffen oder als verpasst gewertet.
+interface ScheduledBeat {
+  id: number
+  time: number
+  accent: boolean
+  settled: boolean
 }
 
 export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
@@ -39,13 +48,16 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
   const [debugInfo, setDebugInfo] = useState<string | null>(null)
 
   const engineRef = useRef<ListeningEngine | null>(null)
-  // Geplante Beat-Zeiten in performance.now()-Domain.
-  const beatTimesRef = useRef<number[]>([])
+  // Geplante Beats (mit stabiler ID) in performance.now()-Domain.
+  const beatsRef = useRef<ScheduledBeat[]>([])
   const schedulerRef = useRef<number | null>(null)
+  const reaperRef = useRef<number | null>(null)
   const beatCountRef = useRef(0)
+  // Bewertungen abgeschlossener Beats (Treffer UND Misses) seit letzter Anpassung.
   const evalWindowRef = useRef<HitRating["rating"][]>([])
   const bpmRef = useRef(START_BPM)
-  const matchedBeatRef = useRef<Set<number>>(new Set())
+  // Aktueller Beat-Index für eine pulsierende Anzeige.
+  const [beatPulse, setBeatPulse] = useState(0)
 
   // Tick-Sound über separaten, kurzlebigen Oszillator (Ausgabe-Context der Engine).
   const playTick = useCallback((accent: boolean) => {
@@ -70,30 +82,55 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
       clearInterval(schedulerRef.current)
       schedulerRef.current = null
     }
+    if (reaperRef.current != null) {
+      clearInterval(reaperRef.current)
+      reaperRef.current = null
+    }
     engineRef.current?.stop()
     engineRef.current = null
-    beatTimesRef.current = []
+    beatsRef.current = []
     setPhase("intro")
   }, [])
 
-  // Bewertet einen Anschlag gegen die nächstgelegene geplante Beat-Zeit.
-  const evaluateOnset = useCallback((onsetTime: number) => {
-    const beats = beatTimesRef.current
-    if (beats.length === 0) return
-    // nächstgelegenen Beat finden
-    let bestIdx = -1
-    let bestAbs = Infinity
-    for (let i = 0; i < beats.length; i++) {
-      const d = Math.abs(onsetTime - beats[i])
-      if (d < bestAbs) {
-        bestAbs = d
-        bestIdx = i
+  // Zentrale Bewertung eines abgeschlossenen Beats (Treffer oder Miss):
+  // aktualisiert Stats, Verlauf und das Tempo-Fenster + ggf. Tempo-Anpassung.
+  const settleBeat = useCallback((rating: HitRating["rating"], delta: number | null) => {
+    if (delta != null) setLastHit({ delta: Math.round(delta), rating })
+    setStats((s) => ({ ...s, [rating]: s[rating] + 1 }))
+    setRecentRatings((r) => [rating, ...r].slice(0, 8))
+
+    const w = evalWindowRef.current
+    w.push(rating)
+    if (w.length >= BEATS_PER_EVAL) {
+      const score = w.reduce((a, r) => a + (r === "perfect" ? 1 : r === "good" ? 0.7 : r === "ok" ? 0.3 : 0), 0) / w.length
+      evalWindowRef.current = []
+      let next = bpmRef.current
+      if (score >= 0.75) next = Math.min(MAX_BPM, bpmRef.current + 6) // präzise -> schneller
+      else if (score < 0.4) next = Math.max(MIN_BPM, bpmRef.current - 6) // ungenau -> langsamer
+      if (next !== bpmRef.current) {
+        bpmRef.current = next
+        setBpm(next)
       }
     }
-    if (bestIdx < 0 || matchedBeatRef.current.has(bestIdx)) return
-    matchedBeatRef.current.add(bestIdx)
+  }, [])
 
-    const delta = onsetTime - beats[bestIdx]
+  // Ordnet einen Anschlag dem nächstgelegenen, noch offenen Beat zu.
+  const evaluateOnset = useCallback((onsetTime: number) => {
+    const beats = beatsRef.current
+    let best: ScheduledBeat | null = null
+    let bestAbs = Infinity
+    for (const b of beats) {
+      if (b.settled) continue
+      const d = Math.abs(onsetTime - b.time)
+      if (d < bestAbs) {
+        bestAbs = d
+        best = b
+      }
+    }
+    // Nur werten, wenn der Anschlag plausibel zu einem Beat gehört.
+    if (!best || bestAbs > OK_MS + 60) return
+
+    const delta = onsetTime - best.time
     const abs = Math.abs(delta)
     let rating: HitRating["rating"]
     if (abs <= PERFECT_MS) rating = "perfect"
@@ -101,27 +138,9 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
     else if (abs <= OK_MS) rating = "ok"
     else rating = "miss"
 
-    const hit: HitRating = { delta: Math.round(delta), rating }
-    setLastHit(hit)
-    setStats((s) => ({ ...s, [rating]: s[rating] + 1 }))
-    setRecentRatings((r) => [rating, ...r].slice(0, 8))
-    evalWindowRef.current.push(rating)
-  }, [])
-
-  // Tempo-Anpassung anhand der letzten Bewertungs-Fensters.
-  const maybeAdjustTempo = useCallback(() => {
-    const w = evalWindowRef.current
-    if (w.length < BEATS_PER_EVAL) return
-    const score =
-      w.reduce((acc, r) => acc + (r === "perfect" ? 1 : r === "good" ? 0.7 : r === "ok" ? 0.3 : 0), 0) / w.length
-    evalWindowRef.current = []
-
-    let next = bpmRef.current
-    if (score >= 0.8) next = Math.min(MAX_BPM, bpmRef.current + 6) // sehr präzise -> schneller
-    else if (score < 0.4) next = Math.max(MIN_BPM, bpmRef.current - 6) // ungenau -> langsamer
-    bpmRef.current = next
-    setBpm(next)
-  }, [])
+    best.settled = true
+    settleBeat(rating, delta)
+  }, [settleBeat])
 
   const startExercise = useCallback(async () => {
     const engine = new ListeningEngine({
@@ -146,41 +165,49 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
     setPhase("running")
     setStats({ perfect: 0, good: 0, ok: 0, miss: 0 })
     setRecentRatings([])
+    setLastHit(null)
     bpmRef.current = START_BPM
     setBpm(START_BPM)
     beatCountRef.current = 0
-    beatTimesRef.current = []
+    beatsRef.current = []
     evalWindowRef.current = []
-    matchedBeatRef.current = new Set()
 
-    // Look-ahead Scheduler: plant Beats in der performance.now()-Domain und
-    // spielt den Tick. Bewertung erfolgt anhand der geplanten Zeiten.
+    // Look-ahead Scheduler: plant Beats in der performance.now()-Domain.
     const SCHED_INTERVAL = 25 // ms
     const LOOKAHEAD = 120 // ms
-    let nextBeatTime = performance.now() + 300 // kleiner Vorlauf
+    // Zwei Takte Vorlauf, bevor gewertet wird (Einzählen).
+    const beatMs0 = 60000 / bpmRef.current
+    let nextBeatTime = performance.now() + beatMs0 * 2
+    let warmupUntilId = 4 // erste 4 Beats nicht werten (Einzähler)
 
     schedulerRef.current = window.setInterval(() => {
       const now = performance.now()
       const beatMs = 60000 / bpmRef.current
       while (nextBeatTime < now + LOOKAHEAD) {
-        const idx = beatCountRef.current
-        beatTimesRef.current.push(nextBeatTime)
-        // alte Beats beschneiden, Index-Set konsistent halten
-        if (beatTimesRef.current.length > 32) {
-          beatTimesRef.current.shift()
-          // matched-Set zurücksetzen ist ok: alte Indizes sind vorbei
-        }
-        const accent = idx % 4 === 0
-        // Tick zum geplanten Zeitpunkt (kleiner Versatz wird ignoriert)
+        const id = beatCountRef.current
+        const accent = id % 4 === 0
+        const isWarmup = id < warmupUntilId
+        beatsRef.current.push({ id, time: nextBeatTime, accent, settled: isWarmup })
+        if (beatsRef.current.length > 48) beatsRef.current.shift()
         playTick(accent)
+        setBeatPulse(id)
         beatCountRef.current++
-
-        if (beatCountRef.current % BEATS_PER_EVAL === 0) maybeAdjustTempo()
-
         nextBeatTime += beatMs
       }
     }, SCHED_INTERVAL)
-  }, [evaluateOnset, maybeAdjustTempo, playTick])
+
+    // Reaper: wertet vergangene, nicht getroffene Beats als "miss" — so läuft
+    // die Tempo-Anpassung auch dann, wenn Anschläge ganz ausbleiben.
+    reaperRef.current = window.setInterval(() => {
+      const now = performance.now()
+      for (const b of beatsRef.current) {
+        if (!b.settled && now - b.time > OK_MS + 70) {
+          b.settled = true
+          settleBeat("miss", null)
+        }
+      }
+    }, 60)
+  }, [evaluateOnset, playTick, settleBeat])
 
   const recordDebug = useCallback(async () => {
     const engine = engineRef.current
@@ -214,6 +241,7 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
   useEffect(() => {
     return () => {
       if (schedulerRef.current != null) clearInterval(schedulerRef.current)
+      if (reaperRef.current != null) clearInterval(reaperRef.current)
       engineRef.current?.stop()
     }
   }, [])
@@ -263,15 +291,44 @@ export default function PrecisionOctaves({ onBack }: PrecisionOctavesProps) {
       {phase === "running" && (
         <div className="flex w-full max-w-md flex-col gap-4">
           <Card>
-            <CardContent className="flex flex-col items-center gap-2 py-6">
-              <div className="text-5xl font-bold tabular-nums">{bpm}</div>
-              <div className="text-sm text-muted-foreground">BPM</div>
-              {/* VU-Meter */}
-              <div className="mt-2 h-2 w-full overflow-hidden rounded bg-muted">
-                <div
-                  className="h-full bg-primary transition-[width] duration-75"
-                  style={{ width: `${Math.min(100, Math.round(level * 400))}%` }}
-                />
+            <CardContent className="flex flex-col items-center gap-3 py-6">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-bold tabular-nums">{bpm}</span>
+                <span className="text-sm text-muted-foreground">BPM</span>
+              </div>
+
+              {/* Beat-Indikator: 4 Punkte, der aktuelle Schlag im Takt leuchtet */}
+              <div className="flex gap-2">
+                {[0, 1, 2, 3].map((i) => {
+                  const activeInBar = beatPulse % 4 === i
+                  return (
+                    <span
+                      key={i}
+                      className={
+                        "h-4 w-4 rounded-full transition-all duration-75 " +
+                        (activeInBar
+                          ? i === 0
+                            ? "scale-125 bg-primary"
+                            : "scale-125 bg-foreground"
+                          : "bg-muted")
+                      }
+                    />
+                  )
+                })}
+              </div>
+
+              {/* VU-Meter mit Label */}
+              <div className="w-full">
+                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                  <span>Mikrofon-Pegel</span>
+                  <span>{Math.round(level * 100)}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-green-500 transition-[width] duration-75"
+                    style={{ width: `${Math.min(100, Math.round(level * 100))}%` }}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
