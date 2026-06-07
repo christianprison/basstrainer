@@ -98,6 +98,7 @@ final class TunerEngine: ObservableObject {
             // the most faithful input — ideal for pitch detection.
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
             try session.setActive(true)
+            selectExternalInput(on: session)
             inputName = session.currentRoute.inputs.first?.portName ?? "—"
 
             let input = engine.inputNode
@@ -116,6 +117,25 @@ final class TunerEngine: ObservableObject {
         } catch {
             lastError = error.localizedDescription
             isRunning = false
+        }
+    }
+
+    /// Prefer an external audio interface (e.g. Behringer UM2) over the
+    /// built-in microphone. iOS usually auto-selects a connected USB interface,
+    /// but pinning it explicitly avoids the occasional fallback to the iPad mic.
+    private func selectExternalInput(on session: AVAudioSession) {
+        guard let inputs = session.availableInputs else { return }
+
+        // Priority: USB audio first, then any other non-built-in input
+        // (line-in, BT-HFP), and only the built-in mic as last resort.
+        let preferred = inputs.first { $0.portType == .usbAudio }
+            ?? inputs.first { $0.portType != .builtInMic }
+
+        guard let preferred else { return }
+        do {
+            try session.setPreferredInput(preferred)
+        } catch {
+            lastError = "Input-Auswahl fehlgeschlagen: \(error.localizedDescription)"
         }
     }
 
