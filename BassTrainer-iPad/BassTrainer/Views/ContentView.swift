@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = GameViewModel()
+    @State private var showTuner = false
 
     var body: some View {
         ZStack {
@@ -113,8 +114,30 @@ struct ContentView: View {
                 }
                 .ignoresSafeArea()
             }
+
+            // Pitch-detection prototype entry point
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        showTuner = true
+                    } label: {
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+                }
+                Spacer()
+            }
         }
         .background(Color(.systemBackground))
+        .sheet(isPresented: $showTuner) {
+            TunerView()
+                .preferredColorScheme(.dark)
+        }
     }
 
     // MARK: - Subviews
