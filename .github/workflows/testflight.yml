@@ -1,0 +1,56 @@
+name: TestFlight
+
+# Erzeugt einen TestFlight-Build, sobald ein Versions-Tag (v1.2.3) gepusht wird.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Nur Lese-Rechte; die Pipeline lädt nur hoch (App Store Connect), schreibt nicht ins Repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: BassTrainer-iPad
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Ruby + Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: BassTrainer-iPad
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Derive marketing version from tag
+        run: echo "MARKETING_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build & upload to TestFlight
+        run: bundle exec fastlane beta
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
