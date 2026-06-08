@@ -1,7 +1,7 @@
 # fastlane Appfile — BassTrainer iPad
 # Werte kommen aus Umgebungsvariablen / GitHub-Secrets (siehe fastlane/README.md).
 
-app_identifier(ENV["APP_IDENTIFIER"] || "com.basstrainer.app")
+app_identifier(ENV["APP_IDENTIFIER"] || "de.prisons.basstrainer")
 
 # Developer-Portal-Team. Authentifizierung läuft über den App Store Connect
 # API-Key (siehe Fastfile), daher kein apple_id nötig.

@@ -36,7 +36,7 @@ final class TunerEngine: ObservableObject {
     /// Analysis window. ~85 ms at 48 kHz — enough periods for low B (~31 Hz).
     private let analysisSize = 4096
     private var ringBuffer: [Float] = []
-    private let detectionQueue = DispatchQueue(label: "com.basstrainer.pitch", qos: .userInitiated)
+    private let detectionQueue = DispatchQueue(label: "de.prisons.basstrainer.pitch", qos: .userInitiated)
     private var detectionInFlight = false
 
     // MARK: - Control

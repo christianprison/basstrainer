@@ -5,7 +5,7 @@ git_url(ENV["MATCH_GIT_URL"])
 storage_mode("git")
 
 type("appstore")
-app_identifier(["com.basstrainer.app"])
+app_identifier(["de.prisons.basstrainer"])
 
 # In CI nur lesen — neue Zertifikate erzeugst du einmalig lokal
 # (siehe fastlane/README.md).

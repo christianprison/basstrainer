@@ -2,7 +2,7 @@ default_platform(:ios)
 
 PROJECT = "BassTrainer.xcodeproj"
 SCHEME  = "BassTrainer"
-APP_ID  = "com.basstrainer.app"
+APP_ID  = "de.prisons.basstrainer"
 
 platform :ios do
   desc "Build the app and upload it to TestFlight"

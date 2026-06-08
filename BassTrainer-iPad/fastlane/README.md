@@ -25,7 +25,7 @@ GitHub-Run-Nummer (monoton steigend – das verlangt TestFlight).
 
 ### 1. Voraussetzungen
 - **Apple Developer Program** (99 $/Jahr), aktiv.
-- App in **App Store Connect** anlegen mit Bundle-ID `com.basstrainer.app`.
+- App in **App Store Connect** anlegen mit Bundle-ID `de.prisons.basstrainer`.
 - Ein **separates, privates Git-Repo** für die match-Zertifikate (z.B. `basstrainer-certs`).
 
 ### 2. App Store Connect API-Key
