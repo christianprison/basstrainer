@@ -26,7 +26,9 @@ GitHub-Run-Nummer (monoton steigend – das verlangt TestFlight).
 ### 1. Voraussetzungen
 - **Apple Developer Program** (99 $/Jahr), aktiv.
 - App in **App Store Connect** anlegen mit Bundle-ID `de.prisons.basstrainer`.
-- Ein **separates, privates Git-Repo** für die match-Zertifikate (z.B. `basstrainer-certs`).
+- Ein **separates, privates Git-Repo** für die match-Zertifikate (z.B. `apple-certificates`).
+  Bewusst **generisch** benennen: Das Distributions-Zertifikat ist account-weit und wird von
+  allen deinen Apps geteilt; dieses Repo kann die Zertifikate + Profile mehrerer Apps halten.
 
 ### 2. App Store Connect API-Key
 App Store Connect → *Users and Access* → *Integrations* → *App Store Connect API*
@@ -41,7 +43,7 @@ Auf einem Mac mit Zugang zum Developer-Account:
 ```bash
 cd BassTrainer-iPad
 bundle install
-export MATCH_GIT_URL="git@github.com:<dein-user>/basstrainer-certs.git"
+export MATCH_GIT_URL="git@github.com:<dein-user>/apple-certificates.git"
 export MATCH_PASSWORD="<eine-starke-passphrase>"   # merken! = Verschlüsselung
 bundle exec fastlane match appstore
 ```
@@ -58,7 +60,7 @@ Das erzeugt Zertifikat + Profil, verschlüsselt sie und legt sie im certs-Repo a
 | `APP_STORE_CONNECT_API_ISSUER_ID` | Issuer ID aus Schritt 2 |
 | `APP_STORE_CONNECT_API_KEY` | Inhalt der `.p8`, **Base64-codiert** (`base64 -i AuthKey_XXXX.p8 \| pbcopy`) |
 | `APPLE_TEAM_ID` | 10-stellige Team-ID (Developer-Portal → Membership) |
-| `MATCH_GIT_URL` | URL des certs-Repos (HTTPS-Form, z.B. `https://github.com/<user>/basstrainer-certs.git`) |
+| `MATCH_GIT_URL` | URL des certs-Repos (HTTPS-Form, z.B. `https://github.com/<user>/apple-certificates.git`) |
 | `MATCH_PASSWORD` | dieselbe Passphrase wie bei Schritt 3 |
 | `MATCH_GIT_BASIC_AUTHORIZATION` | Base64 von `<user>:<PAT>` für Zugriff aufs certs-Repo (`echo -n user:ghp_xxx \| base64`). PAT braucht nur `repo`-Lese-Recht. |
 
