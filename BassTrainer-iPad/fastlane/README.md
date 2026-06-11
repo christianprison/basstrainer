@@ -62,10 +62,11 @@ Das erzeugt Zertifikat + Profil, verschlüsselt sie und legt sie im certs-Repo a
 | `APPLE_TEAM_ID` | 10-stellige Team-ID (Developer-Portal → Membership) |
 | `MATCH_GIT_URL` | URL des certs-Repos (HTTPS-Form, z.B. `https://github.com/<user>/apple-certificates.git`) |
 | `MATCH_PASSWORD` | dieselbe Passphrase wie bei Schritt 3 |
-| `MATCH_GIT_BASIC_AUTHORIZATION` | Base64 von `<user>:<PAT>` für Zugriff aufs certs-Repo (`echo -n user:ghp_xxx \| base64`). PAT braucht nur `repo`-Lese-Recht. |
+| `MATCH_GIT_TOKEN` | Roher Fine-grained PAT (`github_pat_…`) mit **Contents: Read** auf das certs-Repo. Kein Base64. |
 
-> Der PAT im letzten Secret erlaubt dem Runner, das private certs-Repo zu klonen.
-> Alternativ ginge ein Deploy-Key – Basic-Auth ist für den Start am einfachsten.
+> `MATCH_GIT_TOKEN` erlaubt dem Runner, das private certs-Repo zu klonen: Der Workflow setzt
+> damit `git config --global url."https://x-access-token:<TOKEN>@github.com/".insteadOf …`,
+> sodass match das Repo authentifiziert klont. Token-Wert wird im Log maskiert.
 
 ---
 
