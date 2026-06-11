@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   testflight:
-    runs-on: macos-14
+    runs-on: macos-15
     defaults:
       run:
         working-directory: BassTrainer-iPad
@@ -28,8 +28,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Select latest Xcode
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "Using $LATEST"
+          sudo xcode-select -switch "$LATEST/Contents/Developer"
+          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
