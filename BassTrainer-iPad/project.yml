@@ -20,10 +20,6 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: BassTrainer
-        excludes:
-          - "**/*.xcassets"
-    resources:
-      - path: BassTrainer/Resources/Assets.xcassets
     settings:
       base:
         INFOPLIST_FILE: BassTrainer/Resources/Info.plist
