@@ -1,10 +1,14 @@
 name: TestFlight
 
-# Erzeugt einen TestFlight-Build, sobald ein Versions-Tag (v1.2.3) gepusht wird.
+# Erzeugt einen TestFlight-Build bei einem Versions-Tag (v1.2.3) oder bei Push
+# auf den Arbeitsbranch (zum Iterieren, ohne Tag pushen zu müssen).
 on:
   push:
     tags:
       - "v*"
+    branches:
+      - "claude/peaceful-bohr-2vi5K"
+  workflow_dispatch:
 
 # Nur Lese-Rechte; die Pipeline lädt nur hoch (App Store Connect), schreibt nicht ins Repo.
 permissions:
@@ -40,8 +44,13 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Derive marketing version from tag
-        run: echo "MARKETING_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive marketing version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "MARKETING_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "MARKETING_VERSION=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure git auth for certs repo
         run: git config --global url."https://christianprison:${MATCH_GIT_TOKEN}@github.com/".insteadOf "https://github.com/"
