@@ -69,8 +69,7 @@ private struct MenuLevelView: View {
         case .tuner:
             TunerView()
         case .precisionOctaves:
-            // Wird in Schritt 2 durch die echte Oktaven-Übung ersetzt.
-            ComingSoonView(title: item.label, subtitle: item.description)
+            PrecisionOctavesView()
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }

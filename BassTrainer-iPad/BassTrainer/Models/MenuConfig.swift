@@ -39,7 +39,7 @@ enum MenuConfig {
             label: "Präzision",
             description: "Anschlag & Timing",
             children: [
-                MenuItem(id: "oktaven", label: "Oktaven", description: "Oktaven nach Metronom – progressives Tempo", mode: .placeholder),
+                MenuItem(id: "oktaven", label: "Oktaven", description: "Oktaven nach Metronom – progressives Tempo", mode: .precisionOctaves),
                 MenuItem(id: "pick", label: "Pick", description: "Präzision mit Plektrum", mode: .placeholder),
                 MenuItem(id: "fingered", label: "Fingered", description: "Präzision mit Fingern", mode: .placeholder),
             ]
