@@ -37,6 +37,7 @@ platform :ios do
     xcargs << "CODE_SIGN_STYLE=Manual"
     xcargs << "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}"
     xcargs << "PROVISIONING_PROFILE_SPECIFIER='#{profile}'"
+    xcargs << "CODE_SIGN_IDENTITY='Apple Distribution'"
 
     build_app(
       project: PROJECT,
