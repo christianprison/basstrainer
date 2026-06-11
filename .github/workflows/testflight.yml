@@ -53,7 +53,15 @@ jobs:
           fi
 
       - name: Configure git auth for certs repo
-        run: git config --global url."https://christianprison:${MATCH_GIT_TOKEN}@github.com/".insteadOf "https://github.com/"
+        run: |
+          echo "token length: ${#MATCH_GIT_TOKEN}"
+          case "$MATCH_GIT_TOKEN" in
+            "") echo "diag: TOKEN IS EMPTY" ;;
+            github_pat_*) echo "diag: prefix github_pat_ (fine-grained) OK" ;;
+            ghp_*) echo "diag: prefix ghp_ (classic)" ;;
+            *) echo "diag: unexpected prefix / possible whitespace" ;;
+          esac
+          git config --global url."https://christianprison:${MATCH_GIT_TOKEN}@github.com/".insteadOf "https://github.com/"
         env:
           MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
 
