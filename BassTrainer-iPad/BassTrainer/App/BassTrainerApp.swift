@@ -4,7 +4,7 @@ import SwiftUI
 struct BassTrainerApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainMenuView()
                 .preferredColorScheme(.dark)
         }
     }
