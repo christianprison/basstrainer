@@ -6,8 +6,8 @@ import Foundation
 enum SupabaseConfig {
     static let url = "https://ivkcvvjtwwfommsnxerv.supabase.co"
 
-    // TODO: anon/Publishable-Key vom Projekt-Owner eintragen (sb_publishable_… oder Legacy anon).
-    static let anonKey = ""
+    // anon/Publishable-Key (browser-/client-safe, RLS erlaubt nur SELECT).
+    static let anonKey = "sb_publishable_bS0KjYSEGa_CVEplXPC_ZA_gloEimqh"
 
     static var isConfigured: Bool { !anonKey.isEmpty }
 
