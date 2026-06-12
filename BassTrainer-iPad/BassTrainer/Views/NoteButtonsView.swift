@@ -7,7 +7,7 @@ struct NoteButtonsView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("What note is highlighted?")
+            Text("Welche Note ist markiert?")
                 .font(.headline)
 
             // Arrange buttons in a flowing grid
@@ -34,7 +34,7 @@ struct NoteButtonsView: View {
                 }
             }
 
-            Text("Keyboard: C, D, E, F, G, A, B")
+            Text("Tastatur: C, D, E, F, G, A, B")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

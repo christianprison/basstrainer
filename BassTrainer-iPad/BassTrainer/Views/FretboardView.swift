@@ -8,9 +8,11 @@ struct FretboardView: View {
     // Calibrated positions reference width (from web version)
     private static let referenceWidth: CGFloat = 1883.0
 
-    // Calibrated positions: "stringIndex-fret" -> (x, y) at reference width
-    // Strings: 0=B, 1=E, 2=A, 3=D, 4=G (matches BassString raw values: b=4,e=3,a=2,d=1,g=0)
-    // We map BassString.rawValue: g=0->4, d=1->3, a=2->2, e=3->1, b=4->0
+    // Calibrated positions: "stringIndex-fret" -> (x, y) at reference width.
+    // WICHTIG: Der Index entspricht direkt BassString.rawValue (g=0 oben … b=4 unten),
+    // exakt wie die Web-Version (getNotePosition nutzt den String-Index direkt).
+    // Der Kommentar "0=B" in lib/calibrated-positions.ts ist irreführend – das Web
+    // verwendet 0 = oberste/dünnste Saite = G.
     private static let calibratedPositions: [String: CGPoint] = [
         "0-0": CGPoint(x: 110, y: 39),
         "0-3": CGPoint(x: 353, y: 33),
@@ -109,17 +111,10 @@ struct FretboardView: View {
 
     // MARK: - Position Mapping
 
-    /// Map a BassString rawValue to the calibration string index.
-    /// BassString: g=0, d=1, a=2, e=3, b=4
-    /// Calibration: 0=B, 1=E, 2=A, 3=D, 4=G
+    /// Map a BassString to the calibration string index.
+    /// Direkt = BassString.rawValue (g=0 … b=4), passend zur Web-Version.
     private func calibrationStringIndex(for bassString: BassString) -> Int {
-        switch bassString {
-        case .b: return 0
-        case .e: return 1
-        case .a: return 2
-        case .d: return 3
-        case .g: return 4
-        }
+        bassString.rawValue
     }
 
     private func notePosition(position: FretPosition, viewWidth: CGFloat, viewHeight: CGFloat) -> CGPoint {

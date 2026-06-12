@@ -145,7 +145,7 @@ final class GameViewModel: ObservableObject {
                 if nextLevel > 8 {
                     triggerConfetti(.large)
                     gameComplete = true
-                    levelFeedback = "Game complete! You've mastered all levels!"
+                    levelFeedback = "Geschafft! Du hast alle Level gemeistert!"
                     isPlaying = false
                     return
                 } else {
@@ -154,7 +154,7 @@ final class GameViewModel: ObservableObject {
                     audioEngine.playFanfare()
                     responseTimes = [:]
                     achievements = []
-                    levelFeedback = "Welcome to \(LearningLevel.levels[nextLevel - 1].name)"
+                    levelFeedback = "Willkommen bei \(LearningLevel.levels[nextLevel - 1].name)"
                 }
             }
         }
@@ -394,7 +394,7 @@ final class GameViewModel: ObservableObject {
             if !achievements.contains(milestoneKey) {
                 achievements.insert(milestoneKey)
                 triggerConfetti(.large)
-                showAchievement("\(gameStats.correct) correct notes!")
+                showAchievement("\(gameStats.correct) richtige Noten!")
             }
         }
 
@@ -406,7 +406,7 @@ final class GameViewModel: ObservableObject {
                 if !achievements.contains(timeKey) {
                     achievements.insert(timeKey)
                     triggerConfetti(.medium)
-                    showAchievement("\(elapsedMinutes) minutes! Keep going!")
+                    showAchievement("\(elapsedMinutes) Minuten! Weiter so!")
                 }
             }
         }
@@ -421,7 +421,7 @@ final class GameViewModel: ObservableObject {
             let lastThree = recentNotes.suffix(3).map(\.note)
             if lastThree.allSatisfy({ $0 == .a }) {
                 triggerConfetti(.medium)
-                showAchievement("Triple A!")
+                showAchievement("Dreimal A!")
             }
         }
 
@@ -443,7 +443,7 @@ final class GameViewModel: ObservableObject {
                 if !achievements.contains("speed-demon") {
                     achievements.insert("speed-demon")
                     triggerConfetti(.medium)
-                    showAchievement("Speed Demon!")
+                    showAchievement("Tempo-Teufel!")
                 }
             }
         }
@@ -455,7 +455,7 @@ final class GameViewModel: ObservableObject {
                 if !achievements.contains("perfect-fifth") {
                     achievements.insert("perfect-fifth")
                     triggerConfetti(.small)
-                    showAchievement("Perfect Fifth!")
+                    showAchievement("Reine Quinte!")
                 }
             }
         }
@@ -468,7 +468,7 @@ final class GameViewModel: ObservableObject {
                 if !achievements.contains("chromatic") {
                     achievements.insert("chromatic")
                     triggerConfetti(.medium)
-                    showAchievement("Chromatic Run!")
+                    showAchievement("Chromatik-Lauf!")
                 }
             }
         }
@@ -483,7 +483,7 @@ final class GameViewModel: ObservableObject {
             if progress >= milestone && !achievements.contains(milestoneKey) {
                 achievements.insert(milestoneKey)
                 triggerConfetti(milestone >= 0.5 ? .medium : .small)
-                showAchievement("\(Int(milestone * 100))% mastered")
+                showAchievement("\(Int(milestone * 100))% gemeistert")
             }
         }
     }

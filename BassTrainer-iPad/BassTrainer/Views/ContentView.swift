@@ -163,7 +163,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: feedback == .correct ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .font(.title2)
-            Text(feedback == .correct ? "Correct!" : "Wrong - it was \(viewModel.currentNote.rawValue)")
+            Text(feedback == .correct ? "Richtig!" : "Falsch – es war \(viewModel.currentNote.rawValue)")
                 .font(.headline)
         }
         .foregroundColor(feedback == .correct ? .green : .red)
@@ -180,15 +180,15 @@ struct ContentView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.yellow)
 
-            Text("Congratulations!")
+            Text("Glückwunsch!")
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("You've mastered all 8 levels!")
+            Text("Du hast alle 8 Level gemeistert!")
                 .font(.headline)
                 .foregroundColor(.secondary)
 
-            Button("Play Again") {
+            Button("Nochmal spielen") {
                 viewModel.toggleGame()
             }
             .buttonStyle(.borderedProminent)
