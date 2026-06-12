@@ -70,6 +70,8 @@ private struct MenuLevelView: View {
             TunerView()
         case .precisionOctaves:
             PrecisionOctavesView()
+        case .songsList:
+            SongsView()
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }

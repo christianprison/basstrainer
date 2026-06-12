@@ -4,7 +4,8 @@ import Foundation
 enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
     case tuner              // Pitch-Detection / Noten-Erkennung (TunerView)
-    case precisionOctaves   // Oktaven nach Metronom (Schritt 2)
+    case precisionOctaves   // Oktaven nach Metronom
+    case songsList          // Alle Songs aus Supabase (Play-along)
     case placeholder        // "Kommt bald"
 }
 
@@ -57,8 +58,8 @@ enum MenuConfig {
             label: "Songs",
             description: "Komplette Songs üben",
             children: [
-                MenuItem(id: "kitn", label: "Killing in the Name of", description: "Rage Against the Machine", mode: .placeholder),
-                MenuItem(id: "word-up", label: "Word up", description: "Cameo", mode: .placeholder),
+                MenuItem(id: "alle-songs", label: "Alle Songs", description: "Katalog aus der zentralen DB – zum Mitspielen", mode: .songsList),
+                MenuItem(id: "aktuelle-playlist", label: "Aktuelle Playlist", description: "Aktuelles Band-Repertoire", mode: .placeholder),
             ]
         ),
         MenuItem(
