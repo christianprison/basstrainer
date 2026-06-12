@@ -172,7 +172,7 @@ struct TargetDotView: View {
             // Outer glow
             Circle()
                 .fill(color.opacity(0.3))
-                .frame(width: 30, height: 30)
+                .frame(width: 19, height: 19)
                 .scaleEffect(isPulsing ? 1.5 : 1.0)
                 .opacity(isPulsing ? 0.0 : 0.5)
 
@@ -183,15 +183,15 @@ struct TargetDotView: View {
                         colors: [color, color.opacity(0.7)],
                         center: .center,
                         startRadius: 0,
-                        endRadius: 10
+                        endRadius: 6
                     )
                 )
-                .frame(width: 18, height: 18)
+                .frame(width: 11, height: 11)
                 .overlay(
                     Circle()
-                        .stroke(Color.white, lineWidth: 2)
+                        .stroke(Color.white, lineWidth: 1.5)
                 )
-                .shadow(color: color.opacity(0.8), radius: isPulsing ? 12 : 4)
+                .shadow(color: color.opacity(0.8), radius: isPulsing ? 8 : 3)
                 .scaleEffect(isPulsing ? 1.15 : 1.0)
         }
         .position(point)
