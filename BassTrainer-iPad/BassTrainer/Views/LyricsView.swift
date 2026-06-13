@@ -4,9 +4,8 @@ import SwiftUI
 /// aktive Zeile hervorgehoben und automatisch zentriert gescrollt; sonst
 /// statischer Fallback aus `lyrics_raw`.
 struct LyricsView: View {
-    let song: CatalogSong
+    @ObservedObject var vm: SongDetailViewModel
     @ObservedObject var player: SongPlayer
-    @StateObject private var vm = LyricsViewModel()
 
     var body: some View {
         Group {
@@ -22,8 +21,6 @@ struct LyricsView: View {
                 message("Keine Lyrics", "Für diesen Song sind keine Texte hinterlegt.")
             }
         }
-        .task(id: song.id) { await vm.load(songID: song.id) }
-        .onChange(of: player.progress) { _, t in vm.update(currentTime: t) }
     }
 
     // MARK: - Synchronisiert (Karaoke)

@@ -111,3 +111,16 @@ struct LyricsRawRow: Decodable {
         case totalBars = "total_bars"
     }
 }
+
+/// Section/Part aus `song_parts_public` — echte Part-Namen + Starttakte.
+struct SongPart: Decodable, Identifiable {
+    let startBar: Int
+    let name: String
+
+    var id: Int { startBar }
+
+    enum CodingKeys: String, CodingKey {
+        case startBar = "start_bar"
+        case name = "part_name"
+    }
+}

@@ -10,6 +10,7 @@ struct SongsView: View {
     @StateObject private var catalog: SongCatalog
     @StateObject private var player = SongPlayer()
     @StateObject private var metronome = Metronome()
+    @StateObject private var detail = SongDetailViewModel()
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
     @Environment(\.dismiss) private var dismiss
@@ -43,6 +44,7 @@ struct SongsView: View {
                 if selectedID == nil { selectSong(catalog.songs.first) }
             }
         }
+        .onChange(of: player.progress) { _, t in detail.update(currentTime: t) }
         .onDisappear { player.stop(); metronome.stop() }
     }
 
@@ -165,10 +167,10 @@ struct SongsView: View {
             .padding(.horizontal, 24).padding(.vertical, 8)
             Divider()
             Group {
-                if let song = selectedSong {
+                if selectedSong != nil {
                     switch mainTab {
-                    case .lyrics: LyricsView(song: song, player: player)
-                    case .bars:   SongGridView(song: song, activeBar: activeBar(for: song))
+                    case .lyrics: LyricsView(vm: detail, player: player)
+                    case .bars:   SongGridView(song: selectedSong!, vm: detail)
                     }
                 } else {
                     Text("Song auswählen").foregroundColor(.secondary)
@@ -185,71 +187,78 @@ struct SongsView: View {
         selectedID = song.id
         metronome.stop()
         player.load(path: song.playalongPath)
-    }
-
-    /// Aktiver Takt im Playmodus (vorläufig: konstantes Tempo, 4/4 ab Trackstart).
-    private func activeBar(for song: CatalogSong) -> Int? {
-        guard player.isPlaying, let bpm = song.bpm, bpm > 0 else { return nil }
-        let barDuration = 4.0 * 60.0 / Double(bpm)
-        guard barDuration > 0 else { return nil }
-        return Int(player.progress / barDuration) + 1   // 1-basiert
+        Task { await detail.load(songID: song.id) }
     }
 }
 
-/// Hauptbereich: Parts (Zeilen) × Takte (Spalten). Aktiver Takt wird hervorgehoben.
+/// Hauptbereich: Parts (mit echten Namen/Längen) × Takte (Spalten).
+/// Aktiver Takt wird im Playmodus aus der Timeline (t_start) hervorgehoben.
 private struct SongGridView: View {
     let song: CatalogSong
-    let activeBar: Int?
+    @ObservedObject var vm: SongDetailViewModel
 
-    private let barsPerRow = 8
+    /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
+    private var maxBar: Int {
+        vm.totalBars ?? vm.bars.last?.barNum ?? song.snippetBars.last ?? 0
+    }
 
-    /// Vorläufige Taktquelle: per-Takt-Snippets, sonst aus Dauer & Tempo geschätzt.
-    private var bars: [Int] {
-        if !song.snippetBars.isEmpty { return song.snippetBars }
-        if let dur = song.durationSec, let bpm = song.bpm, bpm > 0 {
-            let count = max(1, Int((Double(dur) / (4.0 * 60.0 / Double(bpm))).rounded()))
-            return Array(1...count)
+    /// Echte Parts mit ihren Taktbereichen (aus song_parts_public).
+    private var sections: [(name: String, bars: [Int])] {
+        guard !vm.parts.isEmpty, maxBar > 0 else { return [] }
+        let sorted = vm.parts.sorted { $0.startBar < $1.startBar }
+        return sorted.enumerated().compactMap { i, part in
+            let start = max(1, part.startBar)
+            let end = i + 1 < sorted.count ? sorted[i + 1].startBar - 1 : maxBar
+            guard end >= start else { return nil }
+            return (part.name, Array(start...end))
         }
-        return []
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Takte (Vorschau)")
-                .font(.caption).foregroundColor(.secondary)
-                .padding(.horizontal, 16).padding(.top, 10)
-
-            if bars.isEmpty {
-                Spacer()
+        Group {
+            if vm.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if sections.isEmpty && maxBar == 0 {
                 Text("Keine Takt-Struktur verfügbar.")
-                    .foregroundColor(.secondary).frame(maxWidth: .infinity)
-                Spacer()
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    let rows = stride(from: 0, to: bars.count, by: barsPerRow).map {
-                        Array(bars[$0..<min($0 + barsPerRow, bars.count)])
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(rows.enumerated()), id: \.offset) { idx, rowBars in
-                            HStack(alignment: .center, spacing: 8) {
-                                Text("Teil \(idx + 1)")
-                                    .font(.caption2).foregroundColor(.secondary)
-                                    .frame(width: 56, alignment: .leading)
-                                ForEach(rowBars, id: \.self) { bar in
-                                    barCell(bar)
-                                }
+                    VStack(alignment: .leading, spacing: 18) {
+                        if sections.isEmpty {
+                            // Keine Parts hinterlegt → Takte ungegliedert.
+                            partSection(name: "Takte", bars: Array(1...maxBar))
+                        } else {
+                            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                                partSection(name: section.name, bars: section.bars)
                             }
                         }
                     }
-                    .padding(16)
+                    .padding(20)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func partSection(name: String, bars: [Int]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(name.uppercased())
+                    .font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
+                Text("· \(bars.count) Takte")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+            FlowLayout(spacing: 8) {
+                ForEach(bars, id: \.self) { bar in
+                    barCell(bar)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func barCell(_ bar: Int) -> some View {
-        let isActive = activeBar == bar
+        let isActive = vm.activeBarNum == bar
         return Text("\(bar)")
             .font(.callout).monospacedDigit()
             .frame(width: 44, height: 44)
@@ -263,6 +272,38 @@ private struct SongGridView: View {
                     .stroke(isActive ? Color.accentColor : Color(.separator), lineWidth: 1)
             )
             .animation(.easeInOut(duration: 0.12), value: isActive)
+    }
+}
+
+/// Einfaches Flow-Layout: ordnet Subviews zeilenweise und bricht bei Breite um.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for sv in subviews {
+            let size = sv.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > maxWidth {
+                x = 0; y += rowHeight + spacing; rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        var x: CGFloat = bounds.minX, y: CGFloat = bounds.minY, rowHeight: CGFloat = 0
+        for sv in subviews {
+            let size = sv.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
+            }
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

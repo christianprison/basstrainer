@@ -1,11 +1,14 @@
 import Foundation
 
-/// Lädt Timeline/Lyrics eines Songs und bestimmt im Playmodus den aktiven Takt.
+/// Lädt Timeline + Parts + statische Lyrics eines Songs und bestimmt im
+/// Playmodus den aktiven Takt. Wird von Lyrics-Ansicht UND Takt-Raster genutzt.
 /// Timing kommt ausschließlich aus `song_timeline_public` (handgesetzte Marker) —
 /// niemals aus BPM berechnet.
 @MainActor
-final class LyricsViewModel: ObservableObject {
-    @Published private(set) var bars: [TimelineBar] = []   // nur bei synchronisierten Songs
+final class SongDetailViewModel: ObservableObject {
+    @Published private(set) var bars: [TimelineBar] = []   // Timeline (leer = nicht synchronisiert)
+    @Published private(set) var parts: [SongPart] = []     // echte Parts (Name + Starttakt)
+    @Published private(set) var totalBars: Int?            // Gesamtzahl Takte
     @Published private(set) var fallbackLyrics: String?    // lyrics_raw (statischer Fallback)
     @Published private(set) var isSynced = false
     @Published private(set) var isLoading = false
@@ -14,43 +17,44 @@ final class LyricsViewModel: ObservableObject {
 
     private var loadedSongID: String?
 
-    /// Lädt die Daten für einen Song (idempotent pro Song-ID).
+    /// Lädt alle Detail-Daten für einen Song (idempotent pro Song-ID).
     func load(songID: String) async {
         guard songID != loadedSongID else { return }
         loadedSongID = songID
         isLoading = true
         error = nil
         bars = []
+        parts = []
+        totalBars = nil
         fallbackLyrics = nil
         isSynced = false
         activeIndex = nil
         defer { isLoading = false }
 
+        let idFilter = URLQueryItem(name: "song_id", value: "eq.\(songID)")
         do {
-            // 1) Timeline (Rückgrat). Leeres Ergebnis = Song ohne Timing → Fallback.
-            let timeline: [TimelineBar] = try await SupabaseConfig.get(
+            async let timelineReq: [TimelineBar] = SupabaseConfig.get(
                 path: "song_timeline_public",
-                query: [
-                    URLQueryItem(name: "song_id", value: "eq.\(songID)"),
-                    URLQueryItem(name: "order", value: "bar_num.asc"),
-                ]
+                query: [idFilter, URLQueryItem(name: "order", value: "bar_num.asc")]
             )
-            if !timeline.isEmpty {
-                bars = timeline
-                isSynced = true
-                return
-            }
-
-            // 2) Statischer Fallback für Songs ohne Timing.
-            let raw: [LyricsRawRow] = try await SupabaseConfig.get(
+            async let partsReq: [SongPart] = SupabaseConfig.get(
+                path: "song_parts_public",
+                query: [idFilter, URLQueryItem(name: "order", value: "start_bar.asc")]
+            )
+            async let lyricsReq: [LyricsRawRow] = SupabaseConfig.get(
                 path: "song_lyrics_public",
-                query: [
-                    URLQueryItem(name: "song_id", value: "eq.\(songID)"),
-                    URLQueryItem(name: "select", value: "lyrics_raw,total_bars"),
-                ]
+                query: [idFilter, URLQueryItem(name: "select", value: "lyrics_raw,total_bars")]
             )
-            fallbackLyrics = raw.first?.lyricsRaw
-            isSynced = false
+
+            let timeline = try await timelineReq
+            let partList = (try? await partsReq) ?? []          // best effort
+            let lyrics = (try? await lyricsReq) ?? []
+
+            bars = timeline
+            parts = partList
+            fallbackLyrics = lyrics.first?.lyricsRaw
+            totalBars = lyrics.first?.totalBars ?? timeline.last?.barNum
+            isSynced = !timeline.isEmpty
         } catch {
             self.error = error.localizedDescription
         }
@@ -73,6 +77,12 @@ final class LyricsViewModel: ObservableObject {
         }
         let idx = found >= 0 ? found : nil
         if idx != activeIndex { activeIndex = idx }
+    }
+
+    /// Aktive Taktnummer (für Highlight im Raster).
+    var activeBarNum: Int? {
+        guard let i = activeIndex, bars.indices.contains(i) else { return nil }
+        return bars[i].barNum
     }
 
     /// Startzeit eines Takts (für Tap-to-Seek).
