@@ -18,12 +18,18 @@ enum SupabaseConfig {
     }
 }
 
-/// Lädt die aktuelle Setlist (View `setlist_public`) + Play-along-Tracks per PostgREST.
+/// Lädt eine Song-Quelle (Setlist oder Repertoire) + Play-along-Tracks + Takt-Snippets.
 @MainActor
 final class SongCatalog: ObservableObject {
-    @Published var songs: [SetlistSong] = []
+    let source: SongSource
+
+    @Published var songs: [CatalogSong] = []
     @Published var isLoading = false
     @Published var error: String?
+
+    init(source: SongSource) {
+        self.source = source
+    }
 
     func load() async {
         guard SupabaseConfig.isConfigured else {
@@ -35,36 +41,51 @@ final class SongCatalog: ObservableObject {
         defer { isLoading = false }
 
         do {
-            // 1) Aktuelle Setlist, sortiert nach pos.
-            let rows: [SetlistRow] = try await fetch(
-                path: "setlist_public",
-                query: [
-                    URLQueryItem(name: "select", value: "pos,song_id,name,artist,bpm,music_key,duration_sec"),
-                    URLQueryItem(name: "order", value: "pos.asc"),
-                ]
-            )
-
-            // 2) Play-along-Tracks (nur 43 von 51 Songs haben einen) → Map song_id → Pfad.
-            let assets: [PlayalongRow] = try await fetch(
+            // 1) Audio-Assets einmal holen → Play-along-Pfad + bekannte Takte je Song.
+            //    Snippet = ein Takt (hat bar_num), Play-along = Full-Song (bar_num null).
+            let assets: [AudioAssetRow] = try await fetch(
                 path: "audio_assets",
-                query: [
-                    URLQueryItem(name: "select", value: "song_id,storage_path"),
-                    URLQueryItem(name: "kind", value: "eq.playalong"),
-                ]
+                query: [URLQueryItem(name: "select", value: "song_id,storage_path,bar_num")]
             )
-            let pathBySong = Dictionary(assets.map { ($0.songId, $0.storagePath) }, uniquingKeysWith: { first, _ in first })
+            var playalong: [String: String] = [:]
+            var bars: [String: [Int]] = [:]
+            for a in assets {
+                if let bar = a.barNum {
+                    bars[a.songId, default: []].append(bar)
+                } else if let path = a.storagePath, playalong[a.songId] == nil {
+                    playalong[a.songId] = path
+                }
+            }
+            for key in bars.keys { bars[key]?.sort() }
 
-            songs = rows.map { row in
-                SetlistSong(
-                    id: row.songId,
-                    pos: row.pos,
-                    name: row.name,
-                    artist: row.artist,
-                    bpm: row.bpm,
-                    musicKey: row.musicKey,
-                    durationSec: row.durationSec,
-                    playalongPath: pathBySong[row.songId]
+            // 2) Song-Liste je nach Quelle.
+            switch source {
+            case .setlist:
+                let rows: [SetlistRow] = try await fetch(
+                    path: "setlist_public",
+                    query: [
+                        URLQueryItem(name: "select", value: "pos,song_id,name,artist,bpm,music_key,duration_sec"),
+                        URLQueryItem(name: "order", value: "pos.asc"),
+                    ]
                 )
+                songs = rows.map { r in
+                    CatalogSong(id: r.songId, pos: r.pos, name: r.name, artist: r.artist,
+                                bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
+                                playalongPath: playalong[r.songId], snippetBars: bars[r.songId] ?? [])
+                }
+            case .repertoire:
+                let rows: [SongRow] = try await fetch(
+                    path: "songs",
+                    query: [
+                        URLQueryItem(name: "select", value: "id,name,artist,bpm,music_key,duration_sec"),
+                        URLQueryItem(name: "order", value: "name.asc"),
+                    ]
+                )
+                songs = rows.map { r in
+                    CatalogSong(id: r.id, pos: nil, name: r.name, artist: r.artist,
+                                bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
+                                playalongPath: playalong[r.id], snippetBars: bars[r.id] ?? [])
+                }
             }
         } catch {
             self.error = error.localizedDescription

@@ -265,6 +265,21 @@ final class AudioEngine: ObservableObject {
         playSamples(samples)
     }
 
+    /// Kurzer Metronom-Klick (betont vs. unbetont).
+    func playMetronomeClick(accent: Bool) {
+        let duration = 0.05
+        let frameCount = Int(sampleRate * duration)
+        var samples = [Float](repeating: 0, count: frameCount)
+        let freq = accent ? 1600.0 : 1000.0
+        let amp = accent ? 0.7 : 0.45
+        for i in 0..<frameCount {
+            let t = Double(i) / sampleRate
+            let envelope = exp(-t * 70.0) * amp
+            samples[i] = Float(envelope * sin(2.0 * .pi * freq * t))
+        }
+        playSamples(samples)
+    }
+
     // MARK: - Private: WAV Playback
 
     private func playSamples(_ samples: [Float]) {

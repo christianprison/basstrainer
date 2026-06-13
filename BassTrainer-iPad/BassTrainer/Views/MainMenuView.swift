@@ -71,7 +71,9 @@ private struct MenuLevelView: View {
         case .precisionOctaves:
             PrecisionOctavesView()
         case .songsList:
-            SongsView()
+            SongsView(source: .setlist)
+        case .repertoireList:
+            SongsView(source: .repertoire)
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }

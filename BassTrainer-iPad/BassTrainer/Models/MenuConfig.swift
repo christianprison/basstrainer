@@ -5,7 +5,8 @@ enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
     case tuner              // Pitch-Detection / Noten-Erkennung (TunerView)
     case precisionOctaves   // Oktaven nach Metronom
-    case songsList          // Alle Songs aus Supabase (Play-along)
+    case songsList          // Aktuelle Setlist (setlist_public)
+    case repertoireList     // Alle Songs (Tabelle songs)
     case placeholder        // "Kommt bald"
 }
 
@@ -58,7 +59,8 @@ enum MenuConfig {
             label: "Songs",
             description: "Komplette Songs üben",
             children: [
-                MenuItem(id: "aktuelle-setlist", label: "Aktuelle Setlist", description: "Aktuelles Band-Repertoire – zum Mitspielen", mode: .songsList),
+                MenuItem(id: "aktuelle-setlist", label: "Aktuelle Setlist", description: "Aktuelle Setlist – zum Mitspielen", mode: .songsList),
+                MenuItem(id: "repertoire", label: "Repertoire", description: "Alle Songs – zum Mitspielen", mode: .repertoireList),
             ]
         ),
         MenuItem(

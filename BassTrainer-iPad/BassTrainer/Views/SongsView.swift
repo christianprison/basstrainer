@@ -1,90 +1,256 @@
 import SwiftUI
 
-/// "Aktuelle Setlist" — lädt die geordnete Setlist aus Supabase und bietet Play-along.
+/// Songs-Übung mit 3-Zonen-Layout:
+///  - links 20 %: Song-Navigation (Auswahl)
+///  - oben rechts (80 % × 20 %): Statuszeile (Name, Metronom, Play/Pause)
+///  - unten rechts (80 % × 80 %): Hauptbereich – Parts (Zeilen) × Takte (Spalten)
 struct SongsView: View {
-    @StateObject private var catalog = SongCatalog()
+    let source: SongSource
+
+    @StateObject private var catalog: SongCatalog
+    @StateObject private var player = SongPlayer()
+    @StateObject private var metronome = Metronome()
+    @State private var selectedID: String?
     @Environment(\.dismiss) private var dismiss
 
+    init(source: SongSource) {
+        self.source = source
+        _catalog = StateObject(wrappedValue: SongCatalog(source: source))
+    }
+
+    private var selectedSong: CatalogSong? {
+        catalog.songs.first { $0.id == selectedID }
+    }
+
     var body: some View {
-        NavigationStack {
-            Group {
-                if catalog.isLoading {
-                    ProgressView("Lade Setlist …")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = catalog.error {
-                    errorView(error)
-                } else if catalog.songs.isEmpty {
-                    Text("Setlist ist leer.")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    songList
-                }
-            }
-            .navigationTitle("Aktuelle Setlist")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Label("Menü", systemImage: "chevron.left") }
-                }
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                songNav
+                    .frame(width: geo.size.width * 0.2)
+                    .background(Color(.secondarySystemBackground))
+                Divider()
+                workArea
+                    .frame(width: geo.size.width * 0.8)
             }
         }
-        .task { if catalog.songs.isEmpty { await catalog.load() } }
+        .background(Color(.systemBackground))
+        .task {
+            if catalog.songs.isEmpty {
+                await catalog.load()
+                if selectedID == nil { selectSong(catalog.songs.first) }
+            }
+        }
+        .onDisappear { player.stop(); metronome.stop() }
     }
 
-    private var songList: some View {
-        List(catalog.songs) { song in
-            if song.hasPlayalong {
-                NavigationLink(value: song.id) {
-                    SongRow(song: song)
-                }
+    // MARK: - Links: Song-Navigation (20 %)
+
+    private var songNav: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: { Image(systemName: "chevron.left") }
+                Text(source.title).font(.headline).lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            Divider()
+
+            if catalog.isLoading {
+                Spacer(); ProgressView(); Spacer()
+            } else if let error = catalog.error {
+                Spacer()
+                VStack(spacing: 8) {
+                    Text("Fehler").font(.subheadline).bold()
+                    Text(error).font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    Button("Erneut") { Task { await catalog.load(); selectSong(catalog.songs.first) } }
+                        .font(.caption).buttonStyle(.bordered)
+                }.padding(8)
+                Spacer()
             } else {
-                SongRow(song: song).opacity(0.5)
-            }
-        }
-        .navigationDestination(for: String.self) { id in
-            if let song = catalog.songs.first(where: { $0.id == id }) {
-                SongPlayerView(song: song)
+                List(catalog.songs, selection: Binding(
+                    get: { selectedID },
+                    set: { id in selectSong(catalog.songs.first { $0.id == id }) }
+                )) { song in
+                    navRow(song).tag(song.id)
+                }
+                .listStyle(.plain)
             }
         }
     }
 
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle").font(.system(size: 36)).foregroundColor(.secondary)
-            Text("Konnte Setlist nicht laden").font(.headline)
-            Text(message).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
-            Button("Erneut versuchen") { Task { await catalog.load() } }.buttonStyle(.bordered)
+    private func navRow(_ song: CatalogSong) -> some View {
+        HStack(spacing: 8) {
+            if let pos = song.pos {
+                Text("\(pos)").font(.caption).monospacedDigit().foregroundColor(.secondary)
+                    .frame(width: 20, alignment: .trailing)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.name).font(.subheadline).lineLimit(1)
+                if let artist = song.artist {
+                    Text(artist).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            if song.hasPlayalong {
+                Image(systemName: "music.note").font(.caption2).foregroundColor(.accentColor)
+            }
         }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(song.hasPlayalong || !song.snippetBars.isEmpty ? 1 : 0.5)
+    }
+
+    // MARK: - Rechts: Arbeitsbereich (80 %)
+
+    private var workArea: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                statusBar
+                    .frame(height: geo.size.height * 0.2)
+                Divider()
+                mainArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    // Oben rechts (20 % Höhe): Name + Metronom + Play/Pause
+    private var statusBar: some View {
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selectedSong?.name ?? "—").font(.title2).bold().lineLimit(1)
+                HStack(spacing: 12) {
+                    if let artist = selectedSong?.artist { Text(artist) }
+                    if let bpm = selectedSong?.bpm { Label("\(bpm) BPM", systemImage: "metronome") }
+                    if let key = selectedSong?.musicKey { Label(key, systemImage: "music.note") }
+                }
+                .font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+
+            // Metronom
+            Button {
+                metronome.bpm = selectedSong?.bpm ?? 120
+                metronome.toggle()
+            } label: {
+                Image(systemName: "metronome\(metronome.isRunning ? ".fill" : "")")
+                    .font(.system(size: 30))
+                    .foregroundColor(metronome.isRunning ? .accentColor : .primary)
+            }
+            .disabled((selectedSong?.bpm ?? 0) <= 0)
+
+            // Play/Pause (Play-along)
+            Button {
+                player.toggle()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 44))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
+            .disabled(!player.hasTrack)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // Unten rechts (80 % Höhe): Parts × Takte
+    private var mainArea: some View {
+        Group {
+            if let song = selectedSong {
+                SongGridView(song: song, activeBar: activeBar(for: song))
+            } else {
+                Text("Song auswählen").foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func selectSong(_ song: CatalogSong?) {
+        guard let song else { return }
+        selectedID = song.id
+        metronome.stop()
+        player.load(path: song.playalongPath)
+    }
+
+    /// Aktiver Takt im Playmodus (vorläufig: konstantes Tempo, 4/4 ab Trackstart).
+    private func activeBar(for song: CatalogSong) -> Int? {
+        guard player.isPlaying, let bpm = song.bpm, bpm > 0 else { return nil }
+        let barDuration = 4.0 * 60.0 / Double(bpm)
+        guard barDuration > 0 else { return nil }
+        return Int(player.progress / barDuration) + 1   // 1-basiert
     }
 }
 
-private struct SongRow: View {
-    let song: SetlistSong
+/// Hauptbereich: Parts (Zeilen) × Takte (Spalten). Aktiver Takt wird hervorgehoben.
+private struct SongGridView: View {
+    let song: CatalogSong
+    let activeBar: Int?
+
+    private let barsPerRow = 8
+
+    /// Vorläufige Taktquelle: per-Takt-Snippets, sonst aus Dauer & Tempo geschätzt.
+    private var bars: [Int] {
+        if !song.snippetBars.isEmpty { return song.snippetBars }
+        if let dur = song.durationSec, let bpm = song.bpm, bpm > 0 {
+            let count = max(1, Int((Double(dur) / (4.0 * 60.0 / Double(bpm))).rounded()))
+            return Array(1...count)
+        }
+        return []
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Text("\(song.pos)")
-                .font(.callout).monospacedDigit().foregroundColor(.secondary)
-                .frame(width: 28, alignment: .trailing)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song.name).font(.headline)
-                if let artist = song.artist { Text(artist).font(.subheadline).foregroundColor(.secondary) }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                if let bpm = song.bpm { Text("\(bpm) BPM").font(.caption).monospacedDigit() }
-                if let key = song.musicKey { Text(key).font(.caption2).foregroundColor(.secondary) }
-            }
-            if song.hasPlayalong {
-                Image(systemName: "play.circle.fill").foregroundColor(.accentColor).font(.title3)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Takte (Vorschau)")
+                .font(.caption).foregroundColor(.secondary)
+                .padding(.horizontal, 16).padding(.top, 10)
+
+            if bars.isEmpty {
+                Spacer()
+                Text("Keine Takt-Struktur verfügbar.")
+                    .foregroundColor(.secondary).frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                ScrollView {
+                    let rows = stride(from: 0, to: bars.count, by: barsPerRow).map {
+                        Array(bars[$0..<min($0 + barsPerRow, bars.count)])
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { idx, rowBars in
+                            HStack(alignment: .center, spacing: 8) {
+                                Text("Teil \(idx + 1)")
+                                    .font(.caption2).foregroundColor(.secondary)
+                                    .frame(width: 56, alignment: .leading)
+                                ForEach(rowBars, id: \.self) { bar in
+                                    barCell(bar)
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func barCell(_ bar: Int) -> some View {
+        let isActive = activeBar == bar
+        return Text("\(bar)")
+            .font(.callout).monospacedDigit()
+            .frame(width: 44, height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isActive ? Color.accentColor : Color(.secondarySystemBackground))
+            )
+            .foregroundColor(isActive ? .white : .primary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isActive ? Color.accentColor : Color(.separator), lineWidth: 1)
+            )
+            .animation(.easeInOut(duration: 0.12), value: isActive)
     }
 }
 
 #Preview {
-    SongsView()
+    SongsView(source: .setlist)
 }
