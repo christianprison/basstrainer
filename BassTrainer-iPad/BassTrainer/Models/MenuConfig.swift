@@ -58,8 +58,7 @@ enum MenuConfig {
             label: "Songs",
             description: "Komplette Songs üben",
             children: [
-                MenuItem(id: "alle-songs", label: "Alle Songs", description: "Katalog aus der zentralen DB – zum Mitspielen", mode: .songsList),
-                MenuItem(id: "aktuelle-playlist", label: "Aktuelle Playlist", description: "Aktuelles Band-Repertoire", mode: .placeholder),
+                MenuItem(id: "aktuelle-setlist", label: "Aktuelle Setlist", description: "Aktuelles Band-Repertoire – zum Mitspielen", mode: .songsList),
             ]
         ),
         MenuItem(

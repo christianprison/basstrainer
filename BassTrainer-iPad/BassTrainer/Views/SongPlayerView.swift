@@ -3,7 +3,7 @@ import AVFoundation
 
 /// Play-along-Player: streamt den Full-Song-Track aus dem öffentlichen Bucket.
 struct SongPlayerView: View {
-    let song: Song
+    let song: SetlistSong
     @StateObject private var player = SongPlayer()
 
     var body: some View {

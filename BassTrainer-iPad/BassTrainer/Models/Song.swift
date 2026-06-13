@@ -1,38 +1,47 @@
 import Foundation
 
-/// Ein Audio-Asset aus `audio_assets` (Supabase).
-struct AudioAsset: Decodable {
-    let kind: String          // "playalong" | "snippet"
-    let storagePath: String
-    let barNum: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case kind
-        case storagePath = "storage_path"
-        case barNum = "bar_num"
-    }
-}
-
-/// Ein Song aus dem zentralen Katalog (Supabase `songs` + eingebettete `audio_assets`).
-struct Song: Identifiable, Decodable {
-    let id: String
+/// Ein Song aus der aktuellen Setlist (View `setlist_public`, sortiert nach `pos`),
+/// angereichert um den optionalen Play-along-Pfad aus `audio_assets`.
+struct SetlistSong: Identifiable {
+    let id: String          // = song_id (text-PK)
+    let pos: Int
     let name: String
     let artist: String?
     let bpm: Int?
     let musicKey: String?
-    let duration: String?
-    let audioAssets: [AudioAsset]
-
-    /// Pfad des Full-Song-Play-along-Tracks (falls vorhanden).
-    var playalongPath: String? {
-        audioAssets.first { $0.kind == "playalong" }?.storagePath
-    }
+    let durationSec: Int?
+    var playalongPath: String?
 
     var hasPlayalong: Bool { playalongPath != nil }
+}
+
+// MARK: - PostgREST DTOs
+
+/// Zeile aus `setlist_public`.
+struct SetlistRow: Decodable {
+    let pos: Int
+    let songId: String
+    let name: String
+    let artist: String?
+    let bpm: Int?
+    let musicKey: String?
+    let durationSec: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, artist, bpm, duration
+        case pos, name, artist, bpm
+        case songId = "song_id"
         case musicKey = "music_key"
-        case audioAssets = "audio_assets"
+        case durationSec = "duration_sec"
+    }
+}
+
+/// Play-along-Eintrag aus `audio_assets` (kind = 'playalong').
+struct PlayalongRow: Decodable {
+    let songId: String
+    let storagePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case songId = "song_id"
+        case storagePath = "storage_path"
     }
 }

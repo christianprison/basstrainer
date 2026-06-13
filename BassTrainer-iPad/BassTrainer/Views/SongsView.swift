@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "Alle Songs" — lädt den Katalog aus Supabase und bietet Play-along.
+/// "Aktuelle Setlist" — lädt die geordnete Setlist aus Supabase und bietet Play-along.
 struct SongsView: View {
     @StateObject private var catalog = SongCatalog()
     @Environment(\.dismiss) private var dismiss
@@ -9,19 +9,19 @@ struct SongsView: View {
         NavigationStack {
             Group {
                 if catalog.isLoading {
-                    ProgressView("Lade Songs …")
+                    ProgressView("Lade Setlist …")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = catalog.error {
                     errorView(error)
                 } else if catalog.songs.isEmpty {
-                    Text("Keine Songs gefunden.")
+                    Text("Setlist ist leer.")
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     songList
                 }
             }
-            .navigationTitle("Alle Songs")
+            .navigationTitle("Aktuelle Setlist")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -52,7 +52,7 @@ struct SongsView: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle").font(.system(size: 36)).foregroundColor(.secondary)
-            Text("Konnte Songs nicht laden").font(.headline)
+            Text("Konnte Setlist nicht laden").font(.headline)
             Text(message).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
             Button("Erneut versuchen") { Task { await catalog.load() } }.buttonStyle(.bordered)
         }
@@ -62,9 +62,12 @@ struct SongsView: View {
 }
 
 private struct SongRow: View {
-    let song: Song
+    let song: SetlistSong
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Text("\(song.pos)")
+                .font(.callout).monospacedDigit().foregroundColor(.secondary)
+                .frame(width: 28, alignment: .trailing)
             VStack(alignment: .leading, spacing: 3) {
                 Text(song.name).font(.headline)
                 if let artist = song.artist { Text(artist).font(.subheadline).foregroundColor(.secondary) }

@@ -18,10 +18,10 @@ enum SupabaseConfig {
     }
 }
 
-/// Lädt den Song-Katalog per PostgREST.
+/// Lädt die aktuelle Setlist (View `setlist_public`) + Play-along-Tracks per PostgREST.
 @MainActor
 final class SongCatalog: ObservableObject {
-    @Published var songs: [Song] = []
+    @Published var songs: [SetlistSong] = []
     @Published var isLoading = false
     @Published var error: String?
 
@@ -34,28 +34,63 @@ final class SongCatalog: ObservableObject {
         error = nil
         defer { isLoading = false }
 
-        var comps = URLComponents(string: "\(SupabaseConfig.url)/rest/v1/songs")!
-        comps.queryItems = [
-            URLQueryItem(name: "select", value: "id,name,artist,bpm,music_key,duration,audio_assets(kind,storage_path,bar_num)"),
-            URLQueryItem(name: "order", value: "name.asc"),
-        ]
+        do {
+            // 1) Aktuelle Setlist, sortiert nach pos.
+            let rows: [SetlistRow] = try await fetch(
+                path: "setlist_public",
+                query: [
+                    URLQueryItem(name: "select", value: "pos,song_id,name,artist,bpm,music_key,duration_sec"),
+                    URLQueryItem(name: "order", value: "pos.asc"),
+                ]
+            )
+
+            // 2) Play-along-Tracks (nur 43 von 51 Songs haben einen) → Map song_id → Pfad.
+            let assets: [PlayalongRow] = try await fetch(
+                path: "audio_assets",
+                query: [
+                    URLQueryItem(name: "select", value: "song_id,storage_path"),
+                    URLQueryItem(name: "kind", value: "eq.playalong"),
+                ]
+            )
+            let pathBySong = Dictionary(assets.map { ($0.songId, $0.storagePath) }, uniquingKeysWith: { first, _ in first })
+
+            songs = rows.map { row in
+                SetlistSong(
+                    id: row.songId,
+                    pos: row.pos,
+                    name: row.name,
+                    artist: row.artist,
+                    bpm: row.bpm,
+                    musicKey: row.musicKey,
+                    durationSec: row.durationSec,
+                    playalongPath: pathBySong[row.songId]
+                )
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Generischer read-only GET gegen PostgREST.
+    private func fetch<T: Decodable>(path: String, query: [URLQueryItem]) async throws -> T {
+        var comps = URLComponents(string: "\(SupabaseConfig.url)/rest/v1/\(path)")!
+        comps.queryItems = query
         var req = URLRequest(url: comps.url!)
         req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         req.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
 
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse else {
-                error = "Keine Antwort vom Server."
-                return
-            }
-            guard http.statusCode == 200 else {
-                error = "Server-Fehler (HTTP \(http.statusCode))."
-                return
-            }
-            songs = try JSONDecoder().decode([Song].self, from: data)
-        } catch {
-            self.error = error.localizedDescription
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw CatalogError.message("Keine Antwort vom Server.")
         }
+        guard http.statusCode == 200 else {
+            throw CatalogError.message("Server-Fehler (HTTP \(http.statusCode)).")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    enum CatalogError: LocalizedError {
+        case message(String)
+        var errorDescription: String? { if case let .message(m) = self { return m }; return nil }
     }
 }
