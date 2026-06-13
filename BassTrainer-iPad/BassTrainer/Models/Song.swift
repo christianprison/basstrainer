@@ -76,3 +76,38 @@ struct AudioAssetRow: Decodable {
         case barNum = "bar_num"
     }
 }
+
+// MARK: - Lyrics / Timeline
+
+/// Ein Takt aus `song_timeline_public` — Rückgrat der Karaoke-Hervorhebung.
+struct TimelineBar: Identifiable, Decodable {
+    let barNum: Int
+    let tStart: Double
+    let tEnd: Double?       // null nur beim letzten Takt → Songende = Audiodauer
+    let partName: String?
+    let lyrics: String?
+    let instrumental: Bool
+
+    var id: Int { barNum }
+    var text: String { (lyrics ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+    var hasText: Bool { !instrumental && !text.isEmpty }
+
+    enum CodingKeys: String, CodingKey {
+        case barNum = "bar_num"
+        case tStart = "t_start"
+        case tEnd = "t_end"
+        case partName = "part_name"
+        case lyrics, instrumental
+    }
+}
+
+/// Statischer Fallback aus `song_lyrics_public` (für Songs ohne Timing).
+struct LyricsRawRow: Decodable {
+    let lyricsRaw: String?
+    let totalBars: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case lyricsRaw = "lyrics_raw"
+        case totalBars = "total_bars"
+    }
+}

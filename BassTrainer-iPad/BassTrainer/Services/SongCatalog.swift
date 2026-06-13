@@ -16,6 +16,36 @@ enum SupabaseConfig {
         let encoded = storagePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? storagePath
         return URL(string: "\(url)/storage/v1/object/public/snippets/\(encoded)")
     }
+
+    enum RESTError: LocalizedError {
+        case notConfigured
+        case message(String)
+        var errorDescription: String? {
+            switch self {
+            case .notConfigured: return "Supabase-Zugang noch nicht konfiguriert (anon-Key fehlt)."
+            case let .message(m): return m
+            }
+        }
+    }
+
+    /// Generischer read-only GET gegen PostgREST.
+    static func get<T: Decodable>(path: String, query: [URLQueryItem]) async throws -> T {
+        guard isConfigured else { throw RESTError.notConfigured }
+        var comps = URLComponents(string: "\(url)/rest/v1/\(path)")!
+        comps.queryItems = query
+        var req = URLRequest(url: comps.url!)
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw RESTError.message("Keine Antwort vom Server.")
+        }
+        guard http.statusCode == 200 else {
+            throw RESTError.message("Server-Fehler (HTTP \(http.statusCode)).")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
 }
 
 /// Lädt eine Song-Quelle (Setlist oder Repertoire) + Play-along-Tracks + Takt-Snippets.
@@ -92,26 +122,8 @@ final class SongCatalog: ObservableObject {
         }
     }
 
-    /// Generischer read-only GET gegen PostgREST.
+    /// Read-only GET gegen PostgREST (delegiert an den gemeinsamen Helfer).
     private func fetch<T: Decodable>(path: String, query: [URLQueryItem]) async throws -> T {
-        var comps = URLComponents(string: "\(SupabaseConfig.url)/rest/v1/\(path)")!
-        comps.queryItems = query
-        var req = URLRequest(url: comps.url!)
-        req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            throw CatalogError.message("Keine Antwort vom Server.")
-        }
-        guard http.statusCode == 200 else {
-            throw CatalogError.message("Server-Fehler (HTTP \(http.statusCode)).")
-        }
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    enum CatalogError: LocalizedError {
-        case message(String)
-        var errorDescription: String? { if case let .message(m) = self { return m }; return nil }
+        try await SupabaseConfig.get(path: path, query: query)
     }
 }

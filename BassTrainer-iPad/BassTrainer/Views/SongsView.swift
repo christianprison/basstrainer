@@ -11,7 +11,10 @@ struct SongsView: View {
     @StateObject private var player = SongPlayer()
     @StateObject private var metronome = Metronome()
     @State private var selectedID: String?
+    @State private var mainTab: MainTab = .lyrics
     @Environment(\.dismiss) private var dismiss
+
+    private enum MainTab { case lyrics, bars }
 
     init(source: SongSource) {
         self.source = source
@@ -151,14 +154,26 @@ struct SongsView: View {
         .padding(.horizontal, 24)
     }
 
-    // Unten rechts (80 % Höhe): Parts × Takte
+    // Unten rechts (80 % Höhe): Lyrics (Karaoke) oder Takt-Raster
     private var mainArea: some View {
-        Group {
-            if let song = selectedSong {
-                SongGridView(song: song, activeBar: activeBar(for: song))
-            } else {
-                Text("Song auswählen").foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            Picker("", selection: $mainTab) {
+                Text("Lyrics").tag(MainTab.lyrics)
+                Text("Takte").tag(MainTab.bars)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 24).padding(.vertical, 8)
+            Divider()
+            Group {
+                if let song = selectedSong {
+                    switch mainTab {
+                    case .lyrics: LyricsView(song: song, player: player)
+                    case .bars:   SongGridView(song: song, activeBar: activeBar(for: song))
+                    }
+                } else {
+                    Text("Song auswählen").foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
     }
