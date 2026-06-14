@@ -41,14 +41,31 @@ enum PracticeReason: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Eine markierte Übe-Stelle (Taktbereich + Grund), lokal am Gerät gespeichert.
+/// Eine markierte Übe-Stelle (Taktbereich + Grund). Wird aus
+/// `practice_markers` (Supabase) gelesen/geschrieben; lokaler Cache als Fallback.
 struct PracticeMarker: Identifiable, Codable, Equatable {
     var id = UUID()
     let songID: String
     let startBar: Int
     let endBar: Int
     let reason: PracticeReason
-    var createdAt = Date()
+    var note: String?
 
     func contains(bar: Int) -> Bool { bar >= startBar && bar <= endBar }
+
+    enum CodingKeys: String, CodingKey {
+        case id, reason, note
+        case songID = "song_id"
+        case startBar = "start_bar"
+        case endBar = "end_bar"
+    }
+}
+
+/// Payload zum Anlegen (ohne id/user_id — `user_id` setzt die DB per auth.uid()).
+struct PracticeMarkerInsert: Encodable {
+    let song_id: String
+    let start_bar: Int
+    let end_bar: Int
+    let reason: String
+    let note: String?
 }

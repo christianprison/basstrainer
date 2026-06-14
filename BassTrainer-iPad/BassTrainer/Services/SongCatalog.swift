@@ -46,6 +46,37 @@ enum SupabaseConfig {
         }
         return try JSONDecoder().decode(T.self, from: data)
     }
+
+    /// Authentifizierter REST-Request (Schreiben/Lesen mit User-JWT).
+    /// Liefert die Antwort-Daten (kann leer sein, z. B. bei DELETE).
+    @discardableResult
+    static func authedData(
+        method: String,
+        path: String,
+        query: [URLQueryItem] = [],
+        body: Data? = nil,
+        token: String,
+        prefer: String? = nil
+    ) async throws -> Data {
+        var comps = URLComponents(string: "\(url)/rest/v1/\(path)")!
+        if !query.isEmpty { comps.queryItems = query }
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = method
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            req.httpBody = body
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        if let prefer { req.setValue(prefer, forHTTPHeaderField: "Prefer") }
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            throw RESTError.message("Server-Fehler (HTTP \(code)).")
+        }
+        return data
+    }
 }
 
 /// Lädt eine Song-Quelle (Setlist oder Repertoire) + Play-along-Tracks + Takt-Snippets.

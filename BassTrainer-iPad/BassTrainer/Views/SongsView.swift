@@ -236,6 +236,7 @@ private struct SongGridView: View {
             }
         }
         .sheet(isPresented: $showReasonSheet) { reasonSheet }
+        .task(id: song.id) { await store.load(songID: song.id) }
     }
 
     // MARK: - Steuerleiste
@@ -344,8 +345,12 @@ private struct SongGridView: View {
     private var markerList: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
+            HStack(spacing: 6) {
                 Text("Markierte Stellen").font(.caption).fontWeight(.semibold)
+                if store.syncError != nil {
+                    Image(systemName: "icloud.slash").font(.caption2).foregroundColor(.secondary)
+                    Text("offline – lokal gespeichert").font(.caption2).foregroundColor(.secondary)
+                }
                 Spacer()
             }
             .padding(.horizontal, 16).padding(.vertical, 6)
@@ -373,7 +378,7 @@ private struct SongGridView: View {
             }
             .buttonStyle(.borderless)
             .disabled(!vm.hasTiming || !player.hasTrack)
-            Button(role: .destructive) { store.remove(marker) } label: {
+            Button(role: .destructive) { Task { await store.remove(marker) } } label: {
                 Image(systemName: "trash").font(.body)
             }
             .buttonStyle(.borderless)
@@ -389,7 +394,8 @@ private struct SongGridView: View {
             List(PracticeReason.allCases) { reason in
                 Button {
                     if let s = pendingStart, let e = pendingEnd {
-                        store.add(songID: song.id, startBar: s, endBar: e, reason: reason)
+                        let songID = song.id
+                        Task { await store.add(songID: songID, startBar: s, endBar: e, reason: reason) }
                     }
                     finishMarking()
                 } label: {
