@@ -85,8 +85,19 @@ final class SongDetailViewModel: ObservableObject {
         return bars[i].barNum
     }
 
-    /// Startzeit eines Takts (für Tap-to-Seek).
+    /// Startzeit eines Takts (für Tap-to-Seek / Loop-Start).
     func startTime(forBar barNum: Int) -> Double? {
         bars.first { $0.barNum == barNum }?.tStart
     }
+
+    /// Endzeit eines Takts (Loop-Ende). Bei null `t_end` die Startzeit des
+    /// nächsten Takts; gibt es keinen, liefert nil (Aufrufer nutzt Audiodauer).
+    func endTime(forBar barNum: Int) -> Double? {
+        guard let bar = bars.first(where: { $0.barNum == barNum }) else { return nil }
+        if let end = bar.tEnd { return end }
+        return bars.first(where: { $0.barNum > barNum })?.tStart
+    }
+
+    /// Gibt es synchronisiertes Timing (für Loop nötig)?
+    var hasTiming: Bool { isSynced && !bars.isEmpty }
 }

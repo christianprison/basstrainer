@@ -11,11 +11,15 @@ struct SongsView: View {
     @StateObject private var player = SongPlayer()
     @StateObject private var metronome = Metronome()
     @StateObject private var detail = SongDetailViewModel()
+    @StateObject private var markerStore = PracticeMarkerStore()
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
     @Environment(\.dismiss) private var dismiss
 
     private enum MainTab { case lyrics, bars }
+
+    // Statuszeile so hoch wie der Play-Button (44) + 20 px.
+    private let statusBarHeight: CGFloat = 64
 
     init(source: SongSource) {
         self.source = source
@@ -106,14 +110,12 @@ struct SongsView: View {
     // MARK: - Rechts: Arbeitsbereich (80 %)
 
     private var workArea: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                statusBar
-                    .frame(height: geo.size.height * 0.2)
-                Divider()
-                mainArea
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        VStack(spacing: 0) {
+            statusBar
+                .frame(height: statusBarHeight)
+            Divider()
+            mainArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -170,7 +172,7 @@ struct SongsView: View {
                 if selectedSong != nil {
                     switch mainTab {
                     case .lyrics: LyricsView(vm: detail, player: player)
-                    case .bars:   SongGridView(song: selectedSong!, vm: detail)
+                    case .bars:   SongGridView(song: selectedSong!, vm: detail, player: player, store: markerStore)
                     }
                 } else {
                     Text("Song auswählen").foregroundColor(.secondary)
@@ -192,10 +194,18 @@ struct SongsView: View {
 }
 
 /// Hauptbereich: Parts (mit echten Namen/Längen) × Takte (Spalten).
-/// Aktiver Takt wird im Playmodus aus der Timeline (t_start) hervorgehoben.
+/// Aktiver Takt wird im Playmodus aus der Timeline (t_start) hervorgehoben,
+/// das Raster scrollt automatisch mit. Stellen lassen sich markieren und loopen.
 private struct SongGridView: View {
     let song: CatalogSong
     @ObservedObject var vm: SongDetailViewModel
+    @ObservedObject var player: SongPlayer
+    @ObservedObject var store: PracticeMarkerStore
+
+    @State private var markMode = false
+    @State private var pendingStart: Int?
+    @State private var pendingEnd: Int?
+    @State private var showReasonSheet = false
 
     /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
     private var maxBar: Int {
@@ -214,19 +224,62 @@ private struct SongGridView: View {
         }
     }
 
+    private var songMarkers: [PracticeMarker] { store.markers(forSong: song.id) }
+
     var body: some View {
-        Group {
-            if vm.isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if sections.isEmpty && maxBar == 0 {
-                Text("Keine Takt-Struktur verfügbar.")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+        VStack(spacing: 0) {
+            controlBar
+            Divider()
+            content
+            if !songMarkers.isEmpty {
+                markerList
+            }
+        }
+        .sheet(isPresented: $showReasonSheet) { reasonSheet }
+    }
+
+    // MARK: - Steuerleiste
+
+    private var controlBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                markMode.toggle()
+                pendingStart = nil; pendingEnd = nil
+            } label: {
+                Label(markMode ? "Abbrechen" : "Stelle markieren",
+                      systemImage: markMode ? "xmark.circle" : "plus.circle")
+                    .font(.subheadline)
+            }
+            if markMode {
+                Text(pendingStart == nil ? "Ersten Takt antippen" : "Letzten Takt antippen (Start: \(pendingStart!))")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            if player.isLooping {
+                Button { player.clearLoop() } label: {
+                    Label("Loop aus", systemImage: "repeat.circle.fill").font(.subheadline)
+                }
+                .foregroundColor(.accentColor)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+
+    // MARK: - Raster
+
+    @ViewBuilder
+    private var content: some View {
+        if vm.isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if sections.isEmpty && maxBar == 0 {
+            Text("Keine Takt-Struktur verfügbar.")
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         if sections.isEmpty {
-                            // Keine Parts hinterlegt → Takte ungegliedert.
                             partSection(name: "Takte", bars: Array(1...maxBar))
                         } else {
                             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
@@ -235,6 +288,12 @@ private struct SongGridView: View {
                         }
                     }
                     .padding(20)
+                }
+                .onChange(of: vm.activeBarNum) { _, bar in
+                    guard let bar else { return }
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        proxy.scrollTo("gbar-\(bar)", anchor: .center)
+                    }
                 }
             }
         }
@@ -259,6 +318,9 @@ private struct SongGridView: View {
 
     private func barCell(_ bar: Int) -> some View {
         let isActive = vm.activeBarNum == bar
+        let isPending = markMode && pendingStart == bar
+        let markerColor = songMarkers.first { $0.contains(bar: bar) }?.reason.color
+        let strokeColor: Color = isPending ? .orange : (markerColor ?? (isActive ? .accentColor : Color(.separator)))
         return Text("\(bar)")
             .font(.callout).monospacedDigit()
             .frame(width: 44, height: 44)
@@ -269,9 +331,115 @@ private struct SongGridView: View {
             .foregroundColor(isActive ? .white : .primary)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isActive ? Color.accentColor : Color(.separator), lineWidth: 1)
+                    .stroke(strokeColor, lineWidth: (isPending || markerColor != nil) ? 2.5 : 1)
             )
+            .id("gbar-\(bar)")
+            .contentShape(Rectangle())
+            .onTapGesture { tapBar(bar) }
             .animation(.easeInOut(duration: 0.12), value: isActive)
+    }
+
+    // MARK: - Marker-Liste
+
+    private var markerList: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Text("Markierte Stellen").font(.caption).fontWeight(.semibold)
+                Spacer()
+            }
+            .padding(.horizontal, 16).padding(.vertical, 6)
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(songMarkers) { marker in markerRow(marker) }
+                }
+                .padding(.horizontal, 12).padding(.bottom, 12)
+            }
+            .frame(maxHeight: 150)
+        }
+        .background(Color(.secondarySystemBackground).opacity(0.4))
+    }
+
+    private func markerRow(_ marker: PracticeMarker) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: marker.reason.systemImage).foregroundColor(marker.reason.color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Takt \(marker.startBar)–\(marker.endBar)").font(.subheadline)
+                Text(marker.reason.label).font(.caption2).foregroundColor(.secondary)
+            }
+            Spacer()
+            Button { loop(marker) } label: {
+                Image(systemName: "repeat").font(.body)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!vm.hasTiming || !player.hasTrack)
+            Button(role: .destructive) { store.remove(marker) } label: {
+                Image(systemName: "trash").font(.body)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.systemBackground)))
+    }
+
+    // MARK: - Grund-Auswahl
+
+    private var reasonSheet: some View {
+        NavigationStack {
+            List(PracticeReason.allCases) { reason in
+                Button {
+                    if let s = pendingStart, let e = pendingEnd {
+                        store.add(songID: song.id, startBar: s, endBar: e, reason: reason)
+                    }
+                    finishMarking()
+                } label: {
+                    Label(reason.label, systemImage: reason.systemImage)
+                        .foregroundColor(.primary)
+                }
+            }
+            .navigationTitle(reasonTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Abbrechen") { finishMarking() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private var reasonTitle: String {
+        guard let s = pendingStart, let e = pendingEnd else { return "Grund wählen" }
+        return "Takt \(min(s, e))–\(max(s, e)): Grund"
+    }
+
+    // MARK: - Aktionen
+
+    private func tapBar(_ bar: Int) {
+        if markMode {
+            if pendingStart == nil {
+                pendingStart = bar
+            } else {
+                pendingEnd = bar
+                showReasonSheet = true
+            }
+        } else if let t = vm.startTime(forBar: bar) {
+            player.seek(to: t)
+        }
+    }
+
+    private func finishMarking() {
+        showReasonSheet = false
+        markMode = false
+        pendingStart = nil
+        pendingEnd = nil
+    }
+
+    private func loop(_ marker: PracticeMarker) {
+        guard let start = vm.startTime(forBar: marker.startBar) else { return }
+        let end = vm.endTime(forBar: marker.endBar) ?? player.duration
+        guard end > start else { return }
+        player.playLoop(start: start, end: end)
     }
 }
 

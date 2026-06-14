@@ -13,6 +13,7 @@ final class SongPlayer: ObservableObject {
 
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var loop: (start: Double, end: Double)?
 
     /// Lädt einen neuen Track (oder leert den Player, wenn kein Pfad vorhanden).
     func load(path: String?) {
@@ -35,7 +36,13 @@ final class SongPlayer: ObservableObject {
         ) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.progress = time.seconds
+                let t = time.seconds
+                // Loop: zurück zum Anfang, sobald das Ende der markierten Stelle erreicht ist.
+                if let loop = self.loop, t >= loop.end {
+                    self.seek(to: loop.start)
+                    return
+                }
+                self.progress = t
                 if let d = self.player?.currentItem?.duration.seconds, d.isFinite {
                     self.duration = d
                 }
@@ -54,6 +61,19 @@ final class SongPlayer: ObservableObject {
         isPlaying = false
     }
 
+    /// Spielt die markierte Stelle als Endlosschleife.
+    func playLoop(start: Double, end: Double) {
+        guard player != nil, end > start else { return }
+        loop = (start, end)
+        seek(to: start)
+        if !isPlaying { toggle() }
+    }
+
+    /// Beendet den Loop (normale Wiedergabe läuft weiter).
+    func clearLoop() { loop = nil }
+
+    var isLooping: Bool { loop != nil }
+
     func seek(to seconds: Double) {
         player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
         progress = seconds
@@ -64,6 +84,7 @@ final class SongPlayer: ObservableObject {
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil
         player = nil
+        loop = nil
         isPlaying = false
         progress = 0
         duration = 0
