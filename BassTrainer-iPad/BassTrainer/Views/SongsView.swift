@@ -262,6 +262,14 @@ private struct SongGridView: View {
                 }
                 .foregroundColor(.accentColor)
             }
+            Button {
+                Task {
+                    await vm.load(songID: song.id, force: true)
+                    await store.load(songID: song.id)
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise").font(.subheadline)
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
     }

@@ -18,8 +18,9 @@ final class SongDetailViewModel: ObservableObject {
     private var loadedSongID: String?
 
     /// Lädt alle Detail-Daten für einen Song (idempotent pro Song-ID).
-    func load(songID: String) async {
-        guard songID != loadedSongID else { return }
+    /// `force = true` erzwingt ein Neuladen (z. B. nach DB-Änderung).
+    func load(songID: String, force: Bool = false) async {
+        if !force && songID == loadedSongID { return }
         loadedSongID = songID
         isLoading = true
         error = nil
