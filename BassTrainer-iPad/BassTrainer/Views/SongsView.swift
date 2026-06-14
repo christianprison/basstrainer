@@ -205,6 +205,8 @@ private struct SongGridView: View {
     @State private var markMode = false
     @State private var pendingStart: Int?
     @State private var pendingEnd: Int?
+    @State private var pendingReason: PracticeReason?
+    @State private var pendingMode: PracticeMode = .loop
     @State private var showReasonSheet = false
 
     /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
@@ -257,6 +259,10 @@ private struct SongGridView: View {
             }
             Spacer()
             if player.isLooping {
+                if player.loopRate < 1.0 {
+                    Text("\(Int(player.loopRate * 100)) %")
+                        .font(.caption).monospacedDigit().foregroundColor(.secondary)
+                }
                 Button { player.clearLoop() } label: {
                     Label("Loop aus", systemImage: "repeat.circle.fill").font(.subheadline)
                 }
@@ -378,7 +384,12 @@ private struct SongGridView: View {
             Image(systemName: marker.reason.systemImage).foregroundColor(marker.reason.color)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Takt \(marker.startBar)–\(marker.endBar)").font(.subheadline)
-                Text(marker.reason.label).font(.caption2).foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Text(marker.reason.label)
+                    Image(systemName: marker.mode.systemImage)
+                    Text(marker.mode.shortLabel)
+                }
+                .font(.caption2).foregroundColor(.secondary)
             }
             Spacer()
             Button { loop(marker) } label: {
@@ -399,16 +410,34 @@ private struct SongGridView: View {
 
     private var reasonSheet: some View {
         NavigationStack {
-            List(PracticeReason.allCases) { reason in
-                Button {
-                    if let s = pendingStart, let e = pendingEnd {
-                        let songID = song.id
-                        Task { await store.add(songID: songID, startBar: s, endBar: e, reason: reason) }
+            Form {
+                Section("Übe-Modus") {
+                    Picker("Modus", selection: $pendingMode) {
+                        ForEach(PracticeMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
                     }
-                    finishMarking()
-                } label: {
-                    Label(reason.label, systemImage: reason.systemImage)
-                        .foregroundColor(.primary)
+                    .pickerStyle(.segmented)
+                    Text(pendingMode == .loop
+                         ? "Loop der Stelle – erst langsam, dann schneller (Präzision)."
+                         : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                Section("Grund") {
+                    ForEach(PracticeReason.allCases) { reason in
+                        Button {
+                            pendingReason = reason
+                        } label: {
+                            HStack {
+                                Label(reason.label, systemImage: reason.systemImage)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                if pendingReason == reason {
+                                    Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(reasonTitle)
@@ -417,14 +446,17 @@ private struct SongGridView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Abbrechen") { finishMarking() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Sichern") { saveMarker() }.disabled(pendingReason == nil)
+                }
             }
         }
         .presentationDetents([.medium])
     }
 
     private var reasonTitle: String {
-        guard let s = pendingStart, let e = pendingEnd else { return "Grund wählen" }
-        return "Takt \(min(s, e))–\(max(s, e)): Grund"
+        guard let s = pendingStart, let e = pendingEnd else { return "Stelle markieren" }
+        return "Takt \(min(s, e))–\(max(s, e))"
     }
 
     // MARK: - Aktionen
@@ -442,18 +474,32 @@ private struct SongGridView: View {
         }
     }
 
+    private func saveMarker() {
+        if let s = pendingStart, let e = pendingEnd, let reason = pendingReason {
+            let songID = song.id
+            let mode = pendingMode
+            Task { await store.add(songID: songID, startBar: s, endBar: e, reason: reason, mode: mode) }
+        }
+        finishMarking()
+    }
+
     private func finishMarking() {
         showReasonSheet = false
         markMode = false
         pendingStart = nil
         pendingEnd = nil
+        pendingReason = nil
+        pendingMode = .loop
     }
 
     private func loop(_ marker: PracticeMarker) {
-        guard let start = vm.startTime(forBar: marker.startBar) else { return }
+        // Im Zusammenhang: Anlauf von 2 Takten vor der Stelle (Übergang).
+        let startBar = marker.mode == .context ? max(1, marker.startBar - 2) : marker.startBar
+        let start = vm.startTime(forBar: startBar) ?? vm.startTime(forBar: marker.startBar)
+        guard let start else { return }
         let end = vm.endTime(forBar: marker.endBar) ?? player.duration
         guard end > start else { return }
-        player.playLoop(start: start, end: end)
+        player.playLoop(start: start, end: end, progressive: marker.mode == .loop)
     }
 }
 

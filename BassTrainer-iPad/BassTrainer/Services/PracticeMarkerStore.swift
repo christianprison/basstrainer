@@ -45,13 +45,13 @@ final class PracticeMarkerStore: ObservableObject {
     }
 
     /// Legt einen Marker an (DB; bei Fehler lokal als Fallback).
-    func add(songID: String, startBar: Int, endBar: Int, reason: PracticeReason, note: String? = nil) async {
+    func add(songID: String, startBar: Int, endBar: Int, reason: PracticeReason, mode: PracticeMode, note: String? = nil) async {
         let s = min(startBar, endBar)
         let e = max(startBar, endBar)
         do {
             let token = try await auth.token()
             let payload = try JSONEncoder().encode(
-                PracticeMarkerInsert(song_id: songID, start_bar: s, end_bar: e, reason: reason.rawValue, note: note)
+                PracticeMarkerInsert(song_id: songID, start_bar: s, end_bar: e, reason: reason.rawValue, mode: mode.rawValue, note: note)
             )
             let data = try await SupabaseConfig.authedData(
                 method: "POST",
@@ -65,7 +65,7 @@ final class PracticeMarkerStore: ObservableObject {
             saveCache()
             syncError = nil
         } catch {
-            markers.append(PracticeMarker(songID: songID, startBar: s, endBar: e, reason: reason, note: note))
+            markers.append(PracticeMarker(songID: songID, startBar: s, endBar: e, reason: reason, mode: mode, note: note))
             saveCache()
             syncError = error.localizedDescription
         }
@@ -103,7 +103,7 @@ final class PracticeMarkerStore: ObservableObject {
         guard let token = try? await auth.token() else { return }  // später erneut versuchen
         for m in legacy {
             let payload = try? JSONEncoder().encode(
-                PracticeMarkerInsert(song_id: m.songID, start_bar: m.startBar, end_bar: m.endBar, reason: m.reason.rawValue, note: nil)
+                PracticeMarkerInsert(song_id: m.songID, start_bar: m.startBar, end_bar: m.endBar, reason: m.reason.rawValue, mode: PracticeMode.loop.rawValue, note: nil)
             )
             if let payload {
                 _ = try? await SupabaseConfig.authedData(
