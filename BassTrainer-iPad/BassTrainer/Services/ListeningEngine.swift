@@ -126,15 +126,23 @@ final class ListeningEngine {
         }
     }
 
-    /// Ausgang auf den iPad-Lautsprecher zwingen — nach Start (USB-Route aktiv)
-    /// und erneut bei jedem Route-Wechsel.
+    /// Eingang USB, Ausgang iPad-Lautsprecher. Der Speaker-Override zieht den
+    /// Eingang sonst aufs iPad-Mikro — daher danach den USB-Eingang erneut pinnen.
+    /// Idempotent (kein Hin-und-Her, sobald beide Routen passen).
+    private func applyRoutePreference() {
+        let session = AVAudioSession.sharedInstance()
+        let speakerOut = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+        let usbIn = session.currentRoute.inputs.contains { $0.portType == .usbAudio }
+        if speakerOut && usbIn { return }
+        try? session.overrideOutputAudioPort(.speaker)
+        selectExternalInput(on: session)
+    }
+
     private func forceSpeakerOutput() {
-        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        applyRoutePreference()
         routeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { _ in
-            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
-        }
+        ) { [weak self] _ in self?.applyRoutePreference() }
     }
 
     private func makeTick(freq: Double, format: AVAudioFormat) -> AVAudioPCMBuffer? {
