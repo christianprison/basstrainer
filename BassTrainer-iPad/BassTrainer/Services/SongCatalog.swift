@@ -19,10 +19,12 @@ enum SupabaseConfig {
 
     enum RESTError: LocalizedError {
         case notConfigured
+        case forbidden
         case message(String)
         var errorDescription: String? {
             switch self {
             case .notConfigured: return "Supabase-Zugang noch nicht konfiguriert (anon-Key fehlt)."
+            case .forbidden:     return "Nicht als Kurator freigeschaltet."
             case let .message(m): return m
             }
         }
@@ -71,8 +73,9 @@ enum SupabaseConfig {
         if let prefer { req.setValue(prefer, forHTTPHeaderField: "Prefer") }
 
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if code == 403 { throw RESTError.forbidden }
+        guard (200...299).contains(code) else {
             throw RESTError.message("Server-Fehler (HTTP \(code)).")
         }
         return data

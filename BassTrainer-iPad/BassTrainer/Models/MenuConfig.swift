@@ -7,6 +7,8 @@ enum MenuMode {
     case precisionOctaves   // Oktaven nach Metronom
     case songsList          // Aktuelle Setlist (setlist_public)
     case repertoireList     // Alle Songs (Tabelle songs)
+    case introRecorder      // Kurator: Song-Anfänge einspielen → DB
+    case curatorSettings    // Kurator-Status / eigene uid
     case placeholder        // "Kommt bald"
 }
 
@@ -69,6 +71,8 @@ enum MenuConfig {
             description: "Hilfsmittel rund ums Üben",
             children: [
                 MenuItem(id: "pitch-detection", label: "Noten-Erkennung", description: "Live-Tonhöhe vom (USB-)Audio-Eingang", mode: .tuner),
+                MenuItem(id: "intro-recorder", label: "Intro einspielen", description: "Song-Anfänge aufnehmen & in die DB schreiben (Kurator)", mode: .introRecorder),
+                MenuItem(id: "einstellungen", label: "Einstellungen", description: "Kurator-Status / Geräte-ID (uid)", mode: .curatorSettings),
             ]
         ),
     ]

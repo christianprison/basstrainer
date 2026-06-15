@@ -30,6 +30,20 @@ actor SupabaseAuth {
         return try await signUpAnonymous()
     }
 
+    /// Eigene User-ID (uid = JWT 'sub') über `/auth/v1/user`. Für den Kurator-Modus.
+    func userID() async throws -> String {
+        let token = try await token()
+        var req = URLRequest(url: URL(string: "\(SupabaseConfig.url)/auth/v1/user")!)
+        req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw SupabaseConfig.RESTError.message("User-Abfrage fehlgeschlagen.")
+        }
+        struct U: Decodable { let id: String }
+        return try JSONDecoder().decode(U.self, from: data).id
+    }
+
     // MARK: - Endpunkte
 
     private func signUpAnonymous() async throws -> String {

@@ -74,6 +74,10 @@ private struct MenuLevelView: View {
             SongsView(source: .setlist)
         case .repertoireList:
             SongsView(source: .repertoire)
+        case .introRecorder:
+            IntroRecorderView()
+        case .curatorSettings:
+            CuratorSettingsView()
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }
