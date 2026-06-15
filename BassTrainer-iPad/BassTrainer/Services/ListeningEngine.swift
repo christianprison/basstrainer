@@ -40,7 +40,6 @@ final class ListeningEngine {
     private var noiseFloor: Float = 0.005
     private var levelMax: Float = 0.01
     private var sampleRate: Double = 48000
-    private var routeObserver: NSObjectProtocol?
 
     // MARK: - Lifecycle
 
@@ -55,8 +54,6 @@ final class ListeningEngine {
 
     func stop() {
         guard isRunning else { return }
-        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
-        routeObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         tickPlayer.stop()
         engine.stop()
@@ -93,8 +90,6 @@ final class ListeningEngine {
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
             try session.setActive(true)
             selectExternalInput(on: session)
-            // Eingang USB-Interface, Ausgang erzwungen auf den iPad-Lautsprecher.
-            try? session.overrideOutputAudioPort(.speaker)
             inputName = session.currentRoute.inputs.first?.portName ?? "—"
 
             let input = engine.inputNode
@@ -120,29 +115,9 @@ final class ListeningEngine {
             try engine.start()
             tickPlayer.play()
             isRunning = true
-            forceSpeakerOutput()
         } catch {
             isRunning = false
         }
-    }
-
-    /// Eingang USB, Ausgang iPad-Lautsprecher. Der Speaker-Override zieht den
-    /// Eingang sonst aufs iPad-Mikro — daher danach den USB-Eingang erneut pinnen.
-    /// Idempotent (kein Hin-und-Her, sobald beide Routen passen).
-    private func applyRoutePreference() {
-        let session = AVAudioSession.sharedInstance()
-        let speakerOut = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
-        let usbIn = session.currentRoute.inputs.contains { $0.portType == .usbAudio }
-        if speakerOut && usbIn { return }
-        try? session.overrideOutputAudioPort(.speaker)
-        selectExternalInput(on: session)
-    }
-
-    private func forceSpeakerOutput() {
-        applyRoutePreference()
-        routeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.applyRoutePreference() }
     }
 
     private func makeTick(freq: Double, format: AVAudioFormat) -> AVAudioPCMBuffer? {

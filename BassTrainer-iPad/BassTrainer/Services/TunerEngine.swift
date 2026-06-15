@@ -32,7 +32,6 @@ final class TunerEngine: ObservableObject {
 
     private let engine = AVAudioEngine()
     private var detector = PitchDetector()
-    private var routeObserver: NSObjectProtocol?
 
     /// Analysis window. ~85 ms at 48 kHz — enough periods for low B (~31 Hz).
     private let analysisSize = 4096
@@ -56,8 +55,6 @@ final class TunerEngine: ObservableObject {
 
     func stop() {
         guard isRunning else { return }
-        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
-        routeObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
@@ -102,8 +99,6 @@ final class TunerEngine: ObservableObject {
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
             try session.setActive(true)
             selectExternalInput(on: session)
-            // Eingang USB-Interface, Ausgang erzwungen auf den iPad-Lautsprecher.
-            try? session.overrideOutputAudioPort(.speaker)
             inputName = session.currentRoute.inputs.first?.portName ?? "—"
 
             let input = engine.inputNode
@@ -119,30 +114,10 @@ final class TunerEngine: ObservableObject {
             isRunning = true
             permissionDenied = false
             lastError = nil
-            forceSpeakerOutput()
         } catch {
             lastError = error.localizedDescription
             isRunning = false
         }
-    }
-
-    /// Eingang USB, Ausgang iPad-Lautsprecher. Der Speaker-Override zieht den
-    /// Eingang sonst aufs iPad-Mikro — daher danach den USB-Eingang erneut pinnen.
-    /// Idempotent (kein Hin-und-Her, sobald beide Routen passen).
-    private func applyRoutePreference() {
-        let session = AVAudioSession.sharedInstance()
-        let speakerOut = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
-        let usbIn = session.currentRoute.inputs.contains { $0.portType == .usbAudio }
-        if speakerOut && usbIn { return }
-        try? session.overrideOutputAudioPort(.speaker)
-        selectExternalInput(on: session)
-    }
-
-    private func forceSpeakerOutput() {
-        applyRoutePreference()
-        routeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { [weak self] _ in Task { @MainActor in self?.applyRoutePreference() } }
     }
 
     /// Prefer an external audio interface (e.g. Behringer UM2) over the
