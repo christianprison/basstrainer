@@ -90,6 +90,8 @@ final class ListeningEngine {
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
             try session.setActive(true)
             selectExternalInput(on: session)
+            // Eingang USB-Interface, Ausgang erzwungen auf den iPad-Lautsprecher.
+            try? session.overrideOutputAudioPort(.speaker)
             inputName = session.currentRoute.inputs.first?.portName ?? "—"
 
             let input = engine.inputNode
