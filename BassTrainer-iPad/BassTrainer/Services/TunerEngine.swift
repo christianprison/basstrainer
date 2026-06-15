@@ -32,6 +32,7 @@ final class TunerEngine: ObservableObject {
 
     private let engine = AVAudioEngine()
     private var detector = PitchDetector()
+    private var routeObserver: NSObjectProtocol?
 
     /// Analysis window. ~85 ms at 48 kHz — enough periods for low B (~31 Hz).
     private let analysisSize = 4096
@@ -55,6 +56,8 @@ final class TunerEngine: ObservableObject {
 
     func stop() {
         guard isRunning else { return }
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
@@ -116,9 +119,21 @@ final class TunerEngine: ObservableObject {
             isRunning = true
             permissionDenied = false
             lastError = nil
+            forceSpeakerOutput()
         } catch {
             lastError = error.localizedDescription
             isRunning = false
+        }
+    }
+
+    /// Ausgang auf den iPad-Lautsprecher zwingen — nach Start (USB-Route aktiv)
+    /// und erneut bei jedem Route-Wechsel.
+    private func forceSpeakerOutput() {
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { _ in
+            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         }
     }
 

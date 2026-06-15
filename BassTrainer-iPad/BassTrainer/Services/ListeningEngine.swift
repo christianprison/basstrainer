@@ -40,6 +40,7 @@ final class ListeningEngine {
     private var noiseFloor: Float = 0.005
     private var levelMax: Float = 0.01
     private var sampleRate: Double = 48000
+    private var routeObserver: NSObjectProtocol?
 
     // MARK: - Lifecycle
 
@@ -54,6 +55,8 @@ final class ListeningEngine {
 
     func stop() {
         guard isRunning else { return }
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         tickPlayer.stop()
         engine.stop()
@@ -117,8 +120,20 @@ final class ListeningEngine {
             try engine.start()
             tickPlayer.play()
             isRunning = true
+            forceSpeakerOutput()
         } catch {
             isRunning = false
+        }
+    }
+
+    /// Ausgang auf den iPad-Lautsprecher zwingen — nach Start (USB-Route aktiv)
+    /// und erneut bei jedem Route-Wechsel.
+    private func forceSpeakerOutput() {
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { _ in
+            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         }
     }
 

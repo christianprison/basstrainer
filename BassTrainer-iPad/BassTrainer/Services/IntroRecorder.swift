@@ -29,6 +29,7 @@ final class IntroRecorder {
     private var detector = PitchDetector()
     private let detectionQueue = DispatchQueue(label: "de.prisons.basstrainer.intro", qos: .userInitiated)
     private let analysisSize = 4096
+    private var routeObserver: NSObjectProtocol?
 
     // Onset-/Filter-Zustand (Audio-Thread).
     private var lp1: Float = 0
@@ -57,6 +58,8 @@ final class IntroRecorder {
 
     func stop() {
         guard isRunning else { return }
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         tickPlayer.stop()
         engine.stop()
@@ -118,8 +121,21 @@ final class IntroRecorder {
             try engine.start()
             tickPlayer.play()
             isRunning = true
+            forceSpeakerOutput()
         } catch {
             isRunning = false
+        }
+    }
+
+    /// Ausgang auf den iPad-Lautsprecher zwingen — nach Start (USB-Route aktiv)
+    /// und erneut bei jedem Route-Wechsel, da iOS das sonst auf USB zurücksetzt.
+    private func forceSpeakerOutput() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.overrideOutputAudioPort(.speaker)
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { _ in
+            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         }
     }
 
