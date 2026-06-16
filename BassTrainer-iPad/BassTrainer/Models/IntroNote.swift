@@ -8,7 +8,7 @@ struct IntroNote: Identifiable, Codable, Equatable {
     var midi: Int              // klingende Tonhöhe
     var beat: Double           // Viertel ab Downbeat (Auftakt negativ)
     var durationBeats: Double?
-    var string: Int?           // 1=E … 4=G (klingende Konvention)
+    var string: Int?           // 1=B … 5=G (klingende Konvention, 5-Saiter)
     var fret: Int?
     var noteName: String?
 
@@ -55,10 +55,11 @@ struct IntroNoteWrite: Encodable {
     let note_name: String?
 }
 
-/// Bass-Helfer: klingende MIDI-Konvention (open E1/A1/D2/G2 = 28/33/38/43).
+/// Bass-Helfer: klingende MIDI-Konvention für 5-Saiter
+/// (open B0/E1/A1/D2/G2 = 23/28/33/38/43).
 enum BassIntro {
-    static let openMidi: [Int: Int] = [1: 28, 2: 33, 3: 38, 4: 43]   // 1=E … 4=G
-    static let stringName: [Int: String] = [1: "E", 2: "A", 3: "D", 4: "G"]
+    static let openMidi: [Int: Int] = [1: 23, 2: 28, 3: 33, 4: 38, 5: 43]   // 1=B … 5=G
+    static let stringName: [Int: String] = [1: "B", 2: "E", 3: "A", 4: "D", 5: "G"]
     private static let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
     static func midi(forFrequency f: Double) -> Int {
@@ -77,7 +78,7 @@ enum BassIntro {
 
     /// Vorschlag Saite/Bund: kleinste sinnvolle Lage (höchste offene Saite ≤ midi).
     static func suggestStringFret(forMidi m: Int) -> (string: Int, fret: Int)? {
-        for s in [4, 3, 2, 1] {
+        for s in [5, 4, 3, 2, 1] {
             guard let open = openMidi[s] else { continue }
             let fret = m - open
             if fret >= 0 && fret <= 20 { return (s, fret) }
@@ -86,6 +87,6 @@ enum BassIntro {
     }
 
     static func midi(string: Int, fret: Int) -> Int {
-        (openMidi[string] ?? 28) + fret
+        (openMidi[string] ?? 23) + fret
     }
 }

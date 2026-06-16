@@ -127,8 +127,8 @@ struct IntroRecorderView: View {
             Text("\(note.idx)").font(.caption).monospacedDigit().foregroundColor(.secondary).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(BassIntro.noteName(forMidi: note.midi)).font(.headline)
-                if let s = note.string, let f = note.fret {
-                    Text("\(BassIntro.stringName[s] ?? "?")-Saite, Bund \(f)").font(.caption2).foregroundColor(.secondary)
+                if let sf = BassIntro.suggestStringFret(forMidi: note.midi) {
+                    Text("\(BassIntro.stringName[sf.string] ?? "?")-Saite, Bund \(sf.fret)").font(.caption2).foregroundColor(.secondary)
                 }
             }
             stepper(systemImage: "minus") { vm.adjustMidi(note, by: -1) }
@@ -201,8 +201,8 @@ struct IntroRecorderView: View {
 private struct BassTabView: View {
     let notes: [IntroNote]
 
-    // Reihen oben→unten: G(4), D(3), A(2), E(1).
-    private let rows: [(label: String, string: Int)] = [("G", 4), ("D", 3), ("A", 2), ("E", 1)]
+    // Reihen oben→unten: G(5), D(4), A(3), E(2), B(1) — 5-Saiter.
+    private let rows: [(label: String, string: Int)] = [("G", 5), ("D", 4), ("A", 3), ("E", 2), ("B", 1)]
     private let colWidth: CGFloat = 30
 
     var body: some View {
@@ -222,13 +222,12 @@ private struct BassTabView: View {
             }
             .padding(.vertical, 6)
         }
-        .frame(height: 110)
+        .frame(height: 140)
     }
 
     private func fret(of note: IntroNote, on string: Int) -> Int? {
-        let suggestion = BassIntro.suggestStringFret(forMidi: note.midi)
-        guard (note.string ?? suggestion?.string) == string else { return nil }
-        return note.fret ?? suggestion?.fret
+        guard let sf = BassIntro.suggestStringFret(forMidi: note.midi), sf.string == string else { return nil }
+        return sf.fret
     }
 
     private func cell(fret: Int?) -> some View {
