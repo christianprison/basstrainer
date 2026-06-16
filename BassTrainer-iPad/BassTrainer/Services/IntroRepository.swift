@@ -53,6 +53,16 @@ final class IntroRepository: ObservableObject {
         )
     }
 
+    /// Song-IDs, für die Anfänge hinterlegt sind (für die Abruf-Übung).
+    func songIDsWithIntro() async throws -> [String] {
+        struct Row: Decodable { let song_id: String }
+        let rows: [Row] = try await SupabaseConfig.get(
+            path: "song_intro_public",
+            query: [URLQueryItem(name: "select", value: "song_id")]
+        )
+        return Array(Set(rows.map { $0.song_id }))
+    }
+
     /// Eigene uid für den Kurator-Modus.
     func currentUserID() async throws -> String {
         try await auth.userID()

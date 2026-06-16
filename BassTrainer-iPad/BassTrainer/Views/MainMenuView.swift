@@ -74,6 +74,8 @@ private struct MenuLevelView: View {
             SongsView(source: .setlist)
         case .repertoireList:
             SongsView(source: .repertoire)
+        case .introQuiz:
+            IntroQuizView()
         case .introRecorder:
             IntroRecorderView()
         case .curatorSettings:

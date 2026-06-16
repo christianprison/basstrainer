@@ -7,6 +7,7 @@ enum MenuMode {
     case precisionOctaves   // Oktaven nach Metronom
     case songsList          // Aktuelle Setlist (setlist_public)
     case repertoireList     // Alle Songs (Tabelle songs)
+    case introQuiz          // Songanfänge merken (Abruf-Übung)
     case introRecorder      // Kurator: Song-Anfänge einspielen → DB
     case curatorSettings    // Kurator-Status / eigene uid
     case placeholder        // "Kommt bald"
@@ -58,11 +59,12 @@ enum MenuConfig {
         ),
         MenuItem(
             id: "songs",
-            label: "Songs",
+            label: "Repertoire",
             description: "Komplette Songs üben",
             children: [
                 MenuItem(id: "aktuelle-setlist", label: "Aktuelle Setlist", description: "Aktuelle Setlist – zum Mitspielen", mode: .songsList),
-                MenuItem(id: "repertoire", label: "Repertoire", description: "Alle Songs – zum Mitspielen", mode: .repertoireList),
+                MenuItem(id: "repertoire", label: "Alle Songs", description: "Alle Songs – zum Mitspielen", mode: .repertoireList),
+                MenuItem(id: "songanfaenge-merken", label: "Songanfänge merken", description: "Zufälliger Songanfang nach 2-Takt-Einzähler", mode: .introQuiz),
             ]
         ),
         MenuItem(

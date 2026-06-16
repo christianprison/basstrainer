@@ -210,9 +210,9 @@ struct IntroRecorderView: View {
 
 // MARK: - Bass-Tab
 
-/// Read-only Tabulatur: 4 Saitenlinien (oben G … unten E), Bundzahlen je Ton
+/// Read-only Tabulatur: 5 Saitenlinien (oben G … unten B), Bundzahlen je Ton
 /// in Spielreihenfolge. Horizontal scrollbar.
-private struct BassTabView: View {
+struct BassTabView: View {
     let notes: [IntroNote]
 
     // Reihen oben→unten: G(5), D(4), A(3), E(2), B(1) — 5-Saiter.
