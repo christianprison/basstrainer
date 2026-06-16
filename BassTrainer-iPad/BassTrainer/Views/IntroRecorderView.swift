@@ -66,6 +66,7 @@ struct IntroRecorderView: View {
             songHeader
             Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
                 .foregroundColor(.secondary)
+            sensitivitySlider
             Button { vm.startRecording() } label: {
                 Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
             }
@@ -88,6 +89,7 @@ struct IntroRecorderView: View {
                 .font(.title3).foregroundColor(countingIn ? .secondary : .primary)
             ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 40)
             Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
+            sensitivitySlider
             if !countingIn {
                 Button(role: .destructive) { vm.stopRecording() } label: {
                     Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
@@ -184,6 +186,18 @@ struct IntroRecorderView: View {
         }
     }
 
+    private var sensitivitySlider: some View {
+        VStack(spacing: 2) {
+            HStack {
+                Text("Empfindlichkeit").font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(vm.sensitivity * 100)) %").font(.caption2).monospacedDigit().foregroundColor(.secondary)
+            }
+            Slider(value: $vm.sensitivity, in: 0...1)
+        }
+        .padding(.horizontal, 40)
+    }
+
     private func stepper(systemImage: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: systemImage) }
             .buttonStyle(.borderless)
@@ -258,6 +272,9 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var level: Float = 0
     @Published var status: String?
     @Published var saving = false
+    @Published var sensitivity: Double = 0.6 {
+        didSet { recorder.sensitivity = Float(sensitivity) }
+    }
 
     let countInBeats = 4
 
@@ -294,6 +311,7 @@ final class IntroRecorderViewModel: ObservableObject {
     func startRecording() {
         captured = []
         status = nil
+        recorder.sensitivity = Float(sensitivity)
         recorder.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
         recorder.onNote = { [weak self] t, midi, _ in Task { @MainActor in self?.gotNote(time: t, midi: midi) } }
         recorder.start { [weak self] granted in

@@ -9,10 +9,10 @@ import QuartzCore
 /// Kein @MainActor: Tap läuft auf dem Audio-Thread; Callbacks werden vom
 /// Aufrufer auf den Main-Thread gehoben.
 final class IntroRecorder {
-    var onsetThreshold: Float = 0.04
-    var refractoryMs: Double = 90
-    var lowpassHz: Double = 500
-    var inputGain: Float = 25
+    /// 0…1, höher = empfindlicher (mehr erkannte Anschläge). Live verstellbar.
+    var sensitivity: Float = 0.6
+    var refractoryMs: Double = 70
+    var inputGain: Float = 12
 
     /// (Zeit in CACurrentMediaTime-Sekunden, MIDI, Clarity) eines erkannten Tons.
     var onNote: ((Double, Int, Float) -> Void)?
@@ -30,13 +30,11 @@ final class IntroRecorder {
     private let detectionQueue = DispatchQueue(label: "de.prisons.basstrainer.intro", qos: .userInitiated)
     private let analysisSize = 4096
 
-    // Onset-/Filter-Zustand (Audio-Thread).
-    private var lp1: Float = 0
-    private var lp2: Float = 0
-    private var lpCoef: Float = 0.05
-    private var prevEnv: Float = 0
+    // Onset-Zustand (Audio-Thread): adaptiver Transienten-Detektor.
+    private var fastEnv: Float = 0          // schnelle Hüllkurve
+    private var slowEnv: Float = 0.001      // laufendes Sustain-Niveau
+    private var wasAbove = false            // Hysterese
     private var lastOnset: Double = 0
-    private var noiseFloor: Float = 0.005
     private var levelMax: Float = 0.01
     private var sampleRate: Double = 48000
 
@@ -98,10 +96,6 @@ final class IntroRecorder {
             let inFormat = input.inputFormat(forBus: 0)
             sampleRate = inFormat.sampleRate
 
-            let dt = 1.0 / sampleRate
-            let rc = 1.0 / (2.0 * Double.pi * lowpassHz)
-            lpCoef = Float(dt / (rc + dt))
-
             engine.attach(tickPlayer)
             let outFormat = engine.mainMixerNode.outputFormat(forBus: 0)
             engine.connect(tickPlayer, to: engine.mainMixerNode, format: outFormat)
@@ -160,8 +154,11 @@ final class IntroRecorder {
         let cap = Int(sampleRate * 0.5)
         if ring.count > cap { ring.removeFirst(ring.count - cap) }
 
-        // Onset-Erkennung über tiefpassgefilterte Hüllkurve.
+        // Adaptiver Transienten-Detektor (breitbandig): ein Anschlag = relativer
+        // Pegel-Anstieg über dem laufenden Sustain — fängt auch wiederholte/hohe Töne.
         let hop = 256
+        let ratio = 2.0 - sensitivity * 0.85          // 1.15 (empfindlich) … 2.0
+        let floor: Float = 0.02
         var maxEnv: Float = 0
         var i = 0
         while i < n {
@@ -170,21 +167,24 @@ final class IntroRecorder {
             var c = i
             while c < end {
                 let x = data[c] * inputGain
-                lp1 += lpCoef * (x - lp1)
-                lp2 += lpCoef * (lp1 - lp2)
-                sum += lp2 * lp2
+                sum += x * x
                 c += 1
             }
             let env = (sum / Float(end - i)).squareRoot()
             if env > maxEnv { maxEnv = env }
-            if env < noiseFloor * 1.5 { noiseFloor = noiseFloor * 0.995 + env * 0.005 }
-            let dynTh = max(onsetThreshold, noiseFloor * 5)
+            fastEnv += 0.4 * (env - fastEnv)
+            slowEnv += 0.02 * (env - slowEnv)
+            let thresh = max(floor, slowEnv * ratio)
             let tHop = bufStart + Double(i) / sampleRate
-            if env > dynTh && prevEnv <= dynTh && (tHop - lastOnset) * 1000 > refractoryMs {
-                lastOnset = tHop
-                pending.append((onset: tHop, analyzeAt: tHop + 0.09))   // Pitch im Sustain
+            if fastEnv > thresh {
+                if !wasAbove && (tHop - lastOnset) * 1000 > refractoryMs {
+                    lastOnset = tHop
+                    pending.append((onset: tHop, analyzeAt: tHop + 0.09))   // Pitch im Sustain
+                }
+                wasAbove = true
+            } else if fastEnv < thresh * 0.7 {
+                wasAbove = false
             }
-            prevEnv = env
             i = end
         }
 
