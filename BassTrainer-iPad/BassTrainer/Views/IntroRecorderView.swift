@@ -103,6 +103,14 @@ struct IntroRecorderView: View {
 
     private var editView: some View {
         VStack(spacing: 0) {
+            if !vm.notes.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bass-Tab").font(.caption).foregroundColor(.secondary)
+                    BassTabView(notes: vm.notes)
+                }
+                .padding(.horizontal, 16).padding(.top, 8)
+                Divider()
+            }
             List {
                 Section {
                     ForEach(vm.notes) { note in noteRow(note) }
@@ -183,6 +191,57 @@ struct IntroRecorderView: View {
 
     private func beatLabel(_ beat: Double) -> String {
         String(format: "%.2f", beat)
+    }
+}
+
+// MARK: - Bass-Tab
+
+/// Read-only Tabulatur: 4 Saitenlinien (oben G … unten E), Bundzahlen je Ton
+/// in Spielreihenfolge. Horizontal scrollbar.
+private struct BassTabView: View {
+    let notes: [IntroNote]
+
+    // Reihen oben→unten: G(4), D(3), A(2), E(1).
+    private let rows: [(label: String, string: Int)] = [("G", 4), ("D", 3), ("A", 2), ("E", 1)]
+    private let colWidth: CGFloat = 30
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(rows, id: \.string) { row in
+                    HStack(spacing: 0) {
+                        Text(row.label)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 16)
+                        ForEach(notes) { note in
+                            cell(fret: fret(of: note, on: row.string))
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .frame(height: 110)
+    }
+
+    private func fret(of note: IntroNote, on string: Int) -> Int? {
+        let suggestion = BassIntro.suggestStringFret(forMidi: note.midi)
+        guard (note.string ?? suggestion?.string) == string else { return nil }
+        return note.fret ?? suggestion?.fret
+    }
+
+    private func cell(fret: Int?) -> some View {
+        ZStack {
+            Rectangle().fill(Color.secondary.opacity(0.5)).frame(height: 1)
+            if let fret {
+                Text("\(fret)")
+                    .font(.system(.callout, design: .monospaced))
+                    .padding(.horizontal, 4)
+                    .background(Color(.systemBackground))
+            }
+        }
+        .frame(width: colWidth, height: 20)
     }
 }
 
