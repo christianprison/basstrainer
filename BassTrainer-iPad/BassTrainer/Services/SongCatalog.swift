@@ -76,7 +76,9 @@ enum SupabaseConfig {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         if code == 403 { throw RESTError.forbidden }
         guard (200...299).contains(code) else {
-            throw RESTError.message("Server-Fehler (HTTP \(code)).")
+            let body = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = body.isEmpty ? "" : " – \(body.prefix(300))"
+            throw RESTError.message("Server-Fehler (HTTP \(code))\(detail)")
         }
         return data
     }

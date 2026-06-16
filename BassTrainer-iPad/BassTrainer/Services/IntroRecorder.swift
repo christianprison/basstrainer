@@ -9,9 +9,9 @@ import QuartzCore
 /// Kein @MainActor: Tap läuft auf dem Audio-Thread; Callbacks werden vom
 /// Aufrufer auf den Main-Thread gehoben.
 final class IntroRecorder {
-    var onsetThreshold: Float = 0.06
-    var refractoryMs: Double = 120
-    var lowpassHz: Double = 180
+    var onsetThreshold: Float = 0.04
+    var refractoryMs: Double = 90
+    var lowpassHz: Double = 500
     var inputGain: Float = 25
 
     /// (Zeit in CACurrentMediaTime-Sekunden, MIDI, Clarity) eines erkannten Tons.
