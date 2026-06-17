@@ -66,7 +66,7 @@ struct IntroRecorderView: View {
             songHeader
             Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
                 .foregroundColor(.secondary)
-            sensitivitySlider
+            detectionSettings
             Button { vm.startRecording() } label: {
                 Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
             }
@@ -89,7 +89,7 @@ struct IntroRecorderView: View {
                 .font(.title3).foregroundColor(countingIn ? .secondary : .primary)
             ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 40)
             Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
-            sensitivitySlider
+            detectionSettings
             if !countingIn {
                 Button(role: .destructive) { vm.stopRecording() } label: {
                     Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
@@ -186,16 +186,35 @@ struct IntroRecorderView: View {
         }
     }
 
-    private var sensitivitySlider: some View {
-        VStack(spacing: 2) {
-            HStack {
-                Text("Empfindlichkeit").font(.caption).foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(vm.sensitivity * 100)) %").font(.caption2).monospacedDigit().foregroundColor(.secondary)
+    private var detectionSettings: some View {
+        VStack(spacing: 6) {
+            paramSlider("Empfindlichkeit", $vm.sensitivity, 0...1) { "\(Int($0 * 100)) %" }
+            DisclosureGroup("Erweitert (Gain, Gate, Attack …)") {
+                VStack(spacing: 6) {
+                    paramSlider("Gain", $vm.gain, 1...40) { String(format: "%.0f×", $0) }
+                    paramSlider("Gate", $vm.gate, 0...0.15) { String(format: "%.3f", $0) }
+                    paramSlider("Attack", $vm.attack, 0.1...0.9) { String(format: "%.2f", $0) }
+                    paramSlider("Release", $vm.release, 0.005...0.1) { String(format: "%.3f", $0) }
+                    paramSlider("Refraktär", $vm.refractory, 40...200) { "\(Int($0)) ms" }
+                    Button("Standardwerte") { vm.resetParams() }.font(.caption).padding(.top, 2)
+                }
+                .padding(.top, 4)
             }
-            Slider(value: $vm.sensitivity, in: 0...1)
+            .font(.caption).tint(.secondary)
         }
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 30)
+    }
+
+    private func paramSlider(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>,
+                             format: @escaping (Double) -> String) -> some View {
+        VStack(spacing: 1) {
+            HStack {
+                Text(title).font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Text(format(value.wrappedValue)).font(.caption2).monospacedDigit().foregroundColor(.secondary)
+            }
+            Slider(value: value, in: range)
+        }
     }
 
     private func stepper(systemImage: String, _ action: @escaping () -> Void) -> some View {
@@ -272,8 +291,24 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var level: Float = 0
     @Published var status: String?
     @Published var saving = false
-    @Published var sensitivity: Double = 0.6 {
-        didSet { recorder.sensitivity = Float(sensitivity) }
+    @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity) } }
+    @Published var gain: Double = 12        { didSet { recorder.inputGain = Float(gain) } }
+    @Published var gate: Double = 0.02      { didSet { recorder.gate = Float(gate) } }
+    @Published var attack: Double = 0.4     { didSet { recorder.attack = Float(attack) } }
+    @Published var release: Double = 0.02   { didSet { recorder.release = Float(release) } }
+    @Published var refractory: Double = 70  { didSet { recorder.refractoryMs = refractory } }
+
+    func applyParams() {
+        recorder.sensitivity = Float(sensitivity)
+        recorder.inputGain = Float(gain)
+        recorder.gate = Float(gate)
+        recorder.attack = Float(attack)
+        recorder.release = Float(release)
+        recorder.refractoryMs = refractory
+    }
+
+    func resetParams() {
+        sensitivity = 0.6; gain = 12; gate = 0.02; attack = 0.4; release = 0.02; refractory = 70
     }
 
     let countInBeats = 4
@@ -311,7 +346,7 @@ final class IntroRecorderViewModel: ObservableObject {
     func startRecording() {
         captured = []
         status = nil
-        recorder.sensitivity = Float(sensitivity)
+        applyParams()
         recorder.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
         recorder.onNote = { [weak self] t, midi, _ in Task { @MainActor in self?.gotNote(time: t, midi: midi) } }
         recorder.start { [weak self] granted in

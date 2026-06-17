@@ -11,8 +11,11 @@ import QuartzCore
 final class IntroRecorder {
     /// 0…1, höher = empfindlicher (mehr erkannte Anschläge). Live verstellbar.
     var sensitivity: Float = 0.6
-    var refractoryMs: Double = 70
-    var inputGain: Float = 12
+    var refractoryMs: Double = 70   // Mindestabstand zwischen Tönen
+    var inputGain: Float = 12       // Gain (Eingangsverstärkung)
+    var gate: Float = 0.02          // Gate (Rauschsperre, absolute Schwelle)
+    var attack: Float = 0.4         // schnelle Hüllkurve (0…1, höher = flinker)
+    var release: Float = 0.02       // Sustain-Nachführung (klein = träge)
 
     /// (Zeit in CACurrentMediaTime-Sekunden, MIDI, Clarity) eines erkannten Tons.
     var onNote: ((Double, Int, Float) -> Void)?
@@ -158,7 +161,6 @@ final class IntroRecorder {
         // Pegel-Anstieg über dem laufenden Sustain — fängt auch wiederholte/hohe Töne.
         let hop = 256
         let ratio = 2.0 - sensitivity * 0.85          // 1.15 (empfindlich) … 2.0
-        let floor: Float = 0.02
         var maxEnv: Float = 0
         var i = 0
         while i < n {
@@ -172,9 +174,9 @@ final class IntroRecorder {
             }
             let env = (sum / Float(end - i)).squareRoot()
             if env > maxEnv { maxEnv = env }
-            fastEnv += 0.4 * (env - fastEnv)
-            slowEnv += 0.02 * (env - slowEnv)
-            let thresh = max(floor, slowEnv * ratio)
+            fastEnv += attack * (env - fastEnv)
+            slowEnv += release * (env - slowEnv)
+            let thresh = max(gate, slowEnv * ratio)
             let tHop = bufStart + Double(i) / sampleRate
             if fastEnv > thresh {
                 if !wasAbove && (tHop - lastOnset) * 1000 > refractoryMs {
