@@ -235,51 +235,83 @@ struct IntroRecorderView: View {
 
 // MARK: - Bass-Tab
 
-/// Read-only Tabulatur: 5 Saitenlinien (oben G … unten B), Bundzahlen je Ton
-/// in Spielreihenfolge. Horizontal scrollbar.
+/// Read-only Tabulatur: 5 Saitenlinien (oben G … unten B). Töne werden
+/// **rhythmisch** nach ihrer Position im Takt platziert, mit Taktstrichen
+/// (4/4) und Dauer-Unterstrich. Horizontal scrollbar.
 struct BassTabView: View {
     let notes: [IntroNote]
 
     // Reihen oben→unten: G(5), D(4), A(3), E(2), B(1) — 5-Saiter.
     private let rows: [(label: String, string: Int)] = [("G", 5), ("D", 4), ("A", 3), ("E", 2), ("B", 1)]
-    private let colWidth: CGFloat = 30
+    private let beatWidth: CGFloat = 30      // pt pro Viertel
+    private let rowHeight: CGFloat = 22
+    private let leftPad: CGFloat = 22
+    private let topPad: CGFloat = 10
+
+    private var firstBeat: Double { notes.map { $0.beat }.min() ?? 0 }
+    private var lastEnd: Double { notes.map { $0.beat + ($0.durationBeats ?? 0.25) }.max() ?? 4 }
+    private var originBeat: Double { min(0, (firstBeat / 4).rounded(.down) * 4) }
+    private var endBeat: Double { max(originBeat + 4, (lastEnd / 4).rounded(.up) * 4) }
+
+    private var totalWidth: CGFloat { leftPad + CGFloat(endBeat - originBeat) * beatWidth + 12 }
+    private var totalHeight: CGFloat { topPad * 2 + CGFloat(rows.count - 1) * rowHeight }
+
+    private func x(_ beat: Double) -> CGFloat { leftPad + CGFloat(beat - originBeat) * beatWidth }
+    private func rowY(_ string: Int) -> CGFloat {
+        let idx = rows.firstIndex { $0.string == string } ?? 0
+        return topPad + CGFloat(idx) * rowHeight
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(rows, id: \.string) { row in
-                    HStack(spacing: 0) {
-                        Text(row.label)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .frame(width: 16)
-                        ForEach(notes) { note in
-                            cell(fret: fret(of: note, on: row.string))
-                        }
+            Canvas { ctx, size in
+                // Saitenlinien + Labels
+                for (idx, row) in rows.enumerated() {
+                    let y = topPad + CGFloat(idx) * rowHeight
+                    var line = Path()
+                    line.move(to: CGPoint(x: leftPad, y: y))
+                    line.addLine(to: CGPoint(x: size.width - 6, y: y))
+                    ctx.stroke(line, with: .color(.secondary.opacity(0.5)), lineWidth: 1)
+                    ctx.draw(Text(row.label).font(.system(size: 11, design: .monospaced)).foregroundColor(.secondary),
+                             at: CGPoint(x: 9, y: y))
+                }
+
+                // Taktstriche (alle 4 Viertel)
+                let bottom = topPad + CGFloat(rows.count - 1) * rowHeight
+                var b = originBeat
+                while b <= endBeat + 0.001 {
+                    var bar = Path()
+                    bar.move(to: CGPoint(x: x(b), y: topPad - 5))
+                    bar.addLine(to: CGPoint(x: x(b), y: bottom + 5))
+                    ctx.stroke(bar, with: .color(.secondary.opacity(0.7)), lineWidth: b == 0 ? 1.6 : 1)
+                    b += 4
+                }
+
+                // Noten
+                for note in notes {
+                    guard let sf = BassIntro.suggestStringFret(forMidi: note.midi) else { continue }
+                    let nx = x(note.beat)
+                    let ny = rowY(sf.string)
+                    let dur = note.durationBeats ?? 0.25
+                    if dur > 0 {
+                        var d = Path()
+                        d.move(to: CGPoint(x: nx, y: ny + 9))
+                        d.addLine(to: CGPoint(x: x(note.beat + dur) - 2, y: ny + 9))
+                        ctx.stroke(d, with: .color(.accentColor.opacity(0.5)), lineWidth: 2)
                     }
+                    let resolved = ctx.resolve(
+                        Text("\(sf.fret)").font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundColor(.primary)
+                    )
+                    let ts = resolved.measure(in: CGSize(width: 50, height: 20))
+                    let rect = CGRect(x: nx - ts.width / 2 - 2, y: ny - ts.height / 2, width: ts.width + 4, height: ts.height)
+                    ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color(.systemBackground)))
+                    ctx.draw(resolved, at: CGPoint(x: nx, y: ny))
                 }
             }
+            .frame(width: totalWidth, height: totalHeight)
             .padding(.vertical, 6)
         }
-        .frame(height: 140)
-    }
-
-    private func fret(of note: IntroNote, on string: Int) -> Int? {
-        guard let sf = BassIntro.suggestStringFret(forMidi: note.midi), sf.string == string else { return nil }
-        return sf.fret
-    }
-
-    private func cell(fret: Int?) -> some View {
-        ZStack {
-            Rectangle().fill(Color.secondary.opacity(0.5)).frame(height: 1)
-            if let fret {
-                Text("\(fret)")
-                    .font(.system(.callout, design: .monospaced))
-                    .padding(.horizontal, 4)
-                    .background(Color(.systemBackground))
-            }
-        }
-        .frame(width: colWidth, height: 20)
+        .frame(height: totalHeight + 16)
     }
 }
 
@@ -317,7 +349,7 @@ final class IntroRecorderViewModel: ObservableObject {
         sensitivity = 0.6; gain = 12; gate = 0.02; attack = 0.4; release = 0.02; refractory = 70
     }
 
-    let countInBeats = 4
+    let countInBeats = 8   // 2 Takte 4/4
 
     private let catalog = SongCatalog(source: .repertoire)
     private let recorder = IntroRecorder()
@@ -327,8 +359,10 @@ final class IntroRecorderViewModel: ObservableObject {
     /// Erkannte Töne der laufenden Aufnahme als Tab-fähige Notenliste.
     var capturedNotes: [IntroNote] {
         captured.enumerated().map { i, c in
+            let beatRaw = (c.time - downbeatTime) / beatDur
+            let beat = (beatRaw * 4).rounded() / 4      // auf Sechzehntel quantisieren
             let sf = BassIntro.suggestStringFret(forMidi: c.midi)
-            return IntroNote(idx: i + 1, midi: c.midi, beat: 0,
+            return IntroNote(idx: i + 1, midi: c.midi, beat: beat,
                              string: sf?.string, fret: sf?.fret, noteName: BassIntro.noteName(forMidi: c.midi))
         }
     }
