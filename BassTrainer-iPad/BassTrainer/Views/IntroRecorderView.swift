@@ -62,43 +62,48 @@ struct IntroRecorderView: View {
     // MARK: - Bereit
 
     private var readyView: some View {
-        VStack(spacing: 20) {
-            songHeader
-            Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
-                .foregroundColor(.secondary)
-            detectionSettings
-            Button { vm.startRecording() } label: {
-                Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
+        ScrollView {
+            VStack(spacing: 20) {
+                songHeader
+                Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
+                    .foregroundColor(.secondary)
+                detectionSettings
+                Button { vm.startRecording() } label: {
+                    Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                if !vm.notes.isEmpty {
+                    Button("Vorhandene bearbeiten") { vm.phase = .edit }
+                }
+                Button("Anderen Song wählen") { vm.reset() }.font(.caption)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            if !vm.notes.isEmpty {
-                Button("Vorhandene bearbeiten") { vm.phase = .edit }
-            }
-            Button("Anderen Song wählen") { vm.reset() }.font(.caption)
-            Spacer()
+            .padding()
         }
-        .padding()
     }
 
     // MARK: - Aufnahme
 
     private func recordingView(countingIn: Bool) -> some View {
-        VStack(spacing: 20) {
-            songHeader
-            Text(countingIn ? "Einzähler …" : "Spiele die ersten Töne")
-                .font(.title3).foregroundColor(countingIn ? .secondary : .primary)
-            ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 40)
-            Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
-            detectionSettings
-            if !countingIn {
-                Button(role: .destructive) { vm.stopRecording() } label: {
-                    Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
+        ScrollView {
+            VStack(spacing: 20) {
+                songHeader
+                Text(countingIn ? "Einzähler …" : "Spiele die ersten Töne")
+                    .font(.title3).foregroundColor(countingIn ? .secondary : .primary)
+                ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 40)
+                Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
+                if !countingIn && !vm.captured.isEmpty {
+                    BassTabView(notes: vm.capturedNotes).padding(.horizontal)
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 40)
+                detectionSettings
+                if !countingIn {
+                    Button(role: .destructive) { vm.stopRecording() } label: {
+                        Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 40)
+                }
             }
-            Spacer()
+            .padding()
         }
-        .padding()
     }
 
     // MARK: - Korrektur
@@ -189,18 +194,12 @@ struct IntroRecorderView: View {
     private var detectionSettings: some View {
         VStack(spacing: 6) {
             paramSlider("Empfindlichkeit", $vm.sensitivity, 0...1) { "\(Int($0 * 100)) %" }
-            DisclosureGroup("Erweitert (Gain, Gate, Attack …)") {
-                VStack(spacing: 6) {
-                    paramSlider("Gain", $vm.gain, 1...40) { String(format: "%.0f×", $0) }
-                    paramSlider("Gate", $vm.gate, 0...0.15) { String(format: "%.3f", $0) }
-                    paramSlider("Attack", $vm.attack, 0.1...0.9) { String(format: "%.2f", $0) }
-                    paramSlider("Release", $vm.release, 0.005...0.1) { String(format: "%.3f", $0) }
-                    paramSlider("Refraktär", $vm.refractory, 40...200) { "\(Int($0)) ms" }
-                    Button("Standardwerte") { vm.resetParams() }.font(.caption).padding(.top, 2)
-                }
-                .padding(.top, 4)
-            }
-            .font(.caption).tint(.secondary)
+            paramSlider("Gain", $vm.gain, 1...40) { String(format: "%.0f×", $0) }
+            paramSlider("Gate", $vm.gate, 0...0.15) { String(format: "%.3f", $0) }
+            paramSlider("Attack", $vm.attack, 0.1...0.9) { String(format: "%.2f", $0) }
+            paramSlider("Release", $vm.release, 0.005...0.1) { String(format: "%.3f", $0) }
+            paramSlider("Refraktär", $vm.refractory, 40...200) { "\(Int($0)) ms" }
+            Button("Standardwerte") { vm.resetParams() }.font(.caption).padding(.top, 2)
         }
         .padding(.horizontal, 30)
     }
@@ -317,6 +316,15 @@ final class IntroRecorderViewModel: ObservableObject {
     private let recorder = IntroRecorder()
     private let repo = IntroRepository()
     private let audio = AudioEngine()
+
+    /// Erkannte Töne der laufenden Aufnahme als Tab-fähige Notenliste.
+    var capturedNotes: [IntroNote] {
+        captured.enumerated().map { i, c in
+            let sf = BassIntro.suggestStringFret(forMidi: c.midi)
+            return IntroNote(idx: i + 1, midi: c.midi, beat: 0,
+                             string: sf?.string, fret: sf?.fret, noteName: BassIntro.noteName(forMidi: c.midi))
+        }
+    }
 
     private var scheduler: Timer?
     private var beatCounter = 0
