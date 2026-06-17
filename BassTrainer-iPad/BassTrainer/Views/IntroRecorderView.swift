@@ -358,13 +358,13 @@ final class IntroRecorderViewModel: ObservableObject {
 
     /// Erkannte Töne der laufenden Aufnahme als Tab-fähige Notenliste.
     var capturedNotes: [IntroNote] {
-        captured.enumerated().map { i, c in
-            let beatRaw = (c.time - downbeatTime) / beatDur
-            let beat = (beatRaw * 4).rounded() / 4      // auf Sechzehntel quantisieren
+        var arr = captured.enumerated().map { i, c in
             let sf = BassIntro.suggestStringFret(forMidi: c.midi)
-            return IntroNote(idx: i + 1, midi: c.midi, beat: beat,
+            return IntroNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur),
                              string: sf?.string, fret: sf?.fret, noteName: BassIntro.noteName(forMidi: c.midi))
         }
+        applyDurations(&arr)
+        return arr
     }
 
     private var scheduler: Timer?
@@ -443,17 +443,34 @@ final class IntroRecorderViewModel: ObservableObject {
 
     private func buildNotes() {
         let sorted = captured.sorted { $0.time < $1.time }
-        notes = sorted.enumerated().map { i, c in
-            let beatRaw = (c.time - downbeatTime) / beatDur
-            let beat = (beatRaw * 4).rounded() / 4    // auf Sechzehntel quantisieren
-            return makeNote(idx: i + 1, midi: c.midi, beat: beat)
+        var result = sorted.enumerated().map { i, c in
+            makeNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur))
         }
+        applyDurations(&result)
+        notes = result
     }
 
     private func makeNote(idx: Int, midi: Int, beat: Double) -> IntroNote {
         let sf = BassIntro.suggestStringFret(forMidi: midi)
         return IntroNote(idx: idx, midi: midi, beat: beat,
                          string: sf?.string, fret: sf?.fret, noteName: BassIntro.noteName(forMidi: midi))
+    }
+
+    private func q16(_ b: Double) -> Double { (b * 4).rounded() / 4 }
+
+    /// Setzt Notendauern aus dem Abstand zum nächsten Anschlag (16tel-quantisiert),
+    /// sortiert chronologisch und reindiziert. Letzte Note = Viertel-Default.
+    private func applyDurations(_ arr: inout [IntroNote]) {
+        var s = arr.sorted { $0.beat < $1.beat }
+        for i in s.indices {
+            if i + 1 < s.count {
+                s[i].durationBeats = min(4, max(0.25, q16(s[i + 1].beat - s[i].beat)))
+            } else {
+                s[i].durationBeats = 1.0
+            }
+            s[i].idx = i + 1
+        }
+        arr = s
     }
 
     // MARK: Korrektur
@@ -466,17 +483,19 @@ final class IntroRecorderViewModel: ObservableObject {
 
     func adjustBeat(_ note: IntroNote, by delta: Double) {
         guard let i = notes.firstIndex(where: { $0.id == note.id }) else { return }
-        notes[i].beat = ((notes[i].beat + delta) * 4).rounded() / 4
+        notes[i].beat = q16(notes[i].beat + delta)
+        applyDurations(&notes)
     }
 
     func deleteNote(_ note: IntroNote) {
         notes.removeAll { $0.id == note.id }
-        reindex()
+        applyDurations(&notes)
     }
 
     func addNote() {
-        let beat = (notes.last?.beat ?? -1) + 1
+        let beat = (notes.map { $0.beat }.max() ?? -1) + 1
         notes.append(makeNote(idx: notes.count + 1, midi: 28, beat: beat))
+        applyDurations(&notes)
     }
 
     private func refresh(_ i: Int) {
@@ -484,10 +503,6 @@ final class IntroRecorderViewModel: ObservableObject {
         notes[i].string = sf?.string
         notes[i].fret = sf?.fret
         notes[i].noteName = BassIntro.noteName(forMidi: notes[i].midi)
-    }
-
-    private func reindex() {
-        for i in notes.indices { notes[i].idx = i + 1 }
     }
 
     // MARK: Vorschau / Speichern
