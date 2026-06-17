@@ -67,6 +67,13 @@ struct IntroRecorderView: View {
                 songHeader
                 Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
                     .foregroundColor(.secondary)
+                if !vm.notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Gespeicherter Anfang").font(.caption).foregroundColor(.secondary)
+                        BassTabView(notes: vm.notes)
+                    }
+                    .padding(.horizontal)
+                }
                 detectionSettings
                 Button { vm.startRecording() } label: {
                     Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
