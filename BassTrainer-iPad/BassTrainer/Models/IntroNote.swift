@@ -89,4 +89,12 @@ enum BassIntro {
     static func midi(string: Int, fret: Int) -> Int {
         (openMidi[string] ?? 23) + fret
     }
+
+    /// Griffbrett-Position (für die Bass-Sample-Wiedergabe der Griffbrett-Übung).
+    /// Mappt die Intro-Saiten (1=B…5=G) auf `BassString` (g=0…b=4).
+    static func fretPosition(forMidi m: Int) -> FretPosition {
+        let sf = suggestStringFret(forMidi: m) ?? (string: 2, fret: max(0, m - 28))
+        let map: [Int: BassString] = [1: .b, 2: .e, 3: .a, 4: .d, 5: .g]
+        return FretPosition(string: map[sf.string] ?? .e, fret: sf.fret)
+    }
 }

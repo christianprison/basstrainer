@@ -74,6 +74,10 @@ struct IntroRecorderView: View {
                     }
                     .padding(.horizontal)
                 }
+                Stepper(value: $vm.tempo, in: 40...240, step: 1) {
+                    Label("Tempo: \(Int(vm.tempo)) BPM", systemImage: "metronome")
+                }
+                .padding(.horizontal, 30)
                 detectionSettings
                 Button { vm.startRecording() } label: {
                     Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
@@ -406,6 +410,7 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var meter: [DetectionMeterSample] = []
     @Published var status: String?
     @Published var saving = false
+    @Published var tempo: Double = 100   // Einspiel-Tempo (BPM), anpassbar
     @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity) } }
     @Published var gain: Double = 12        { didSet { recorder.inputGain = Float(gain) } }
     @Published var gate: Double = 0.02      { didSet { recorder.gate = Float(gate) } }
@@ -450,8 +455,7 @@ final class IntroRecorderViewModel: ObservableObject {
     private var downbeatTime: Double = 0
     private var recording = false
 
-    private var bpm: Int { max(40, selectedSong?.bpm ?? 100) }
-    private var beatDur: Double { 60.0 / Double(bpm) }
+    private var beatDur: Double { 60.0 / max(40, tempo) }
 
     func loadSongs() async {
         await catalog.load()
@@ -460,6 +464,7 @@ final class IntroRecorderViewModel: ObservableObject {
 
     func pick(_ song: CatalogSong) {
         selectedSong = song
+        tempo = Double(song.bpm ?? 100)
         status = nil
         Task {
             notes = (try? await repo.load(songID: song.id)) ?? []
@@ -604,7 +609,7 @@ final class IntroRecorderViewModel: ObservableObject {
             guard t >= 0 else { continue }
             let midi = n.midi
             schedule(after: t) { [weak self] in
-                self?.audio.playSynthBass(frequency: BassIntro.frequency(forMidi: midi))
+                self?.audio.playBassNote(position: BassIntro.fretPosition(forMidi: midi))
             }
         }
     }
