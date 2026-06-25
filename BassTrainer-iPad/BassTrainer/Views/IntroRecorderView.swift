@@ -495,12 +495,15 @@ private struct ParamSlider: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.accentColor)
                 .popover(isPresented: $showHelp) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(title).font(.headline)
-                        Text(help).font(.callout).foregroundColor(.secondary)
+                        Text(help)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding()
-                    .frame(maxWidth: 320)
+                    .padding(16)
+                    .frame(width: 300)
                     .presentationCompactAdaptation(.popover)
                 }
                 Spacer()
