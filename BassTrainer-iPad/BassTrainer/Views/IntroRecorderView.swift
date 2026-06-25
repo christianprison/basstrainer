@@ -101,6 +101,9 @@ struct IntroRecorderView: View {
                 if !countingIn && !vm.captured.isEmpty {
                     BassTabView(notes: vm.capturedNotes).padding(.horizontal)
                 }
+                if !countingIn {
+                    WaveformMeterView(samples: vm.meter).padding(.horizontal)
+                }
                 detectionSettings
                 if !countingIn {
                     Button(role: .destructive) { vm.stopRecording() } label: {
@@ -315,6 +318,79 @@ struct BassTabView: View {
     }
 }
 
+// MARK: - Erkennungs-Visualisierung
+
+/// Ein Telemetrie-Punkt der Onset-Erkennung (für die Live-Wellenform).
+struct DetectionMeterSample {
+    let env: Float          // Pegel (gainverstärkt, geglättet)
+    let threshold: Float    // adaptive Schwelle (Gate + Empfindlichkeit)
+    let onset: Bool         // hier wurde ein Anschlag erkannt
+}
+
+/// Live-Hüllkurve: Pegel (Fläche), adaptive Schwelle (gestrichelt) und
+/// Anschlag-Marker (vertikal). Zeigt direkt, wie die Regler wirken.
+struct WaveformMeterView: View {
+    let samples: [DetectionMeterSample]
+
+    var body: some View {
+        Canvas { ctx, size in
+            guard samples.count > 1 else { return }
+            let maxV = max(0.05, samples.map { max($0.env, $0.threshold) }.max() ?? 0.05)
+            let dx = size.width / CGFloat(samples.count - 1)
+            func y(_ v: Float) -> CGFloat { size.height - CGFloat(v) / CGFloat(maxV) * size.height }
+
+            // Pegel als Fläche
+            var area = Path()
+            area.move(to: CGPoint(x: 0, y: size.height))
+            for (i, s) in samples.enumerated() { area.addLine(to: CGPoint(x: CGFloat(i) * dx, y: y(s.env))) }
+            area.addLine(to: CGPoint(x: size.width, y: size.height))
+            ctx.fill(area, with: .color(.accentColor.opacity(0.25)))
+
+            // Pegel-Linie
+            var line = Path()
+            for (i, s) in samples.enumerated() {
+                let p = CGPoint(x: CGFloat(i) * dx, y: y(s.env))
+                if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
+            }
+            ctx.stroke(line, with: .color(.accentColor), lineWidth: 1.5)
+
+            // Schwelle (gestrichelt)
+            var thr = Path()
+            for (i, s) in samples.enumerated() {
+                let p = CGPoint(x: CGFloat(i) * dx, y: y(s.threshold))
+                if i == 0 { thr.move(to: p) } else { thr.addLine(to: p) }
+            }
+            ctx.stroke(thr, with: .color(.orange), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+
+            // Anschlag-Marker
+            for (i, s) in samples.enumerated() where s.onset {
+                var m = Path()
+                m.move(to: CGPoint(x: CGFloat(i) * dx, y: 0))
+                m.addLine(to: CGPoint(x: CGFloat(i) * dx, y: size.height))
+                ctx.stroke(m, with: .color(.green), lineWidth: 1.5)
+            }
+        }
+        .frame(height: 90)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemBackground)))
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 10) {
+                legend(color: .accentColor, text: "Pegel")
+                legend(color: .orange, text: "Schwelle")
+                legend(color: .green, text: "Anschlag")
+            }
+            .font(.caption2)
+            .padding(6)
+        }
+    }
+
+    private func legend(color: Color, text: String) -> some View {
+        HStack(spacing: 3) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(text).foregroundColor(.secondary)
+        }
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -327,6 +403,7 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var notes: [IntroNote] = []
     @Published var captured: [(time: Double, midi: Int)] = []
     @Published var level: Float = 0
+    @Published var meter: [DetectionMeterSample] = []
     @Published var status: String?
     @Published var saving = false
     @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity) } }
@@ -394,9 +471,11 @@ final class IntroRecorderViewModel: ObservableObject {
 
     func startRecording() {
         captured = []
+        meter = []
         status = nil
         applyParams()
         recorder.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
+        recorder.onMeter = { [weak self] e, t, o in Task { @MainActor in self?.pushMeter(env: e, threshold: t, onset: o) } }
         recorder.onNote = { [weak self] t, midi, _ in Task { @MainActor in self?.gotNote(time: t, midi: midi) } }
         recorder.start { [weak self] granted in
             guard let self else { return }
@@ -431,6 +510,11 @@ final class IntroRecorderViewModel: ObservableObject {
     private func gotNote(time: Double, midi: Int) {
         guard recording, time >= downbeatTime - 0.05 else { return }
         captured.append((time, midi))
+    }
+
+    private func pushMeter(env: Float, threshold: Float, onset: Bool) {
+        meter.append(DetectionMeterSample(env: env, threshold: threshold, onset: onset))
+        if meter.count > 220 { meter.removeFirst(meter.count - 220) }
     }
 
     func stopRecording() {

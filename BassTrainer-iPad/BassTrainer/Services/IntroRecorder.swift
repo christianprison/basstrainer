@@ -20,6 +20,8 @@ final class IntroRecorder {
     /// (Zeit in CACurrentMediaTime-Sekunden, MIDI, Clarity) eines erkannten Tons.
     var onNote: ((Double, Int, Float) -> Void)?
     var onLevel: ((Float) -> Void)?
+    /// Telemetrie für die Visualisierung: (Pegel/fastEnv, Schwelle, Anschlag?).
+    var onMeter: ((Float, Float, Bool) -> Void)?
 
     private(set) var isRunning = false
     private(set) var inputName = "—"
@@ -38,6 +40,8 @@ final class IntroRecorder {
     private var slowEnv: Float = 0.001      // laufendes Sustain-Niveau
     private var wasAbove = false            // Hysterese
     private var lastOnset: Double = 0
+    private var meterHopCounter = 0
+    private var meterOnset = false
     private var levelMax: Float = 0.01
     private var sampleRate: Double = 48000
 
@@ -178,14 +182,25 @@ final class IntroRecorder {
             slowEnv += release * (env - slowEnv)
             let thresh = max(gate, slowEnv * ratio)
             let tHop = bufStart + Double(i) / sampleRate
+            var onsetHere = false
             if fastEnv > thresh {
                 if !wasAbove && (tHop - lastOnset) * 1000 > refractoryMs {
                     lastOnset = tHop
                     pending.append((onset: tHop, analyzeAt: tHop + 0.09))   // Pitch im Sustain
+                    onsetHere = true
                 }
                 wasAbove = true
             } else if fastEnv < thresh * 0.7 {
                 wasAbove = false
+            }
+
+            // Telemetrie für die Visualisierung (dezimiert ~30 Hz).
+            if onsetHere { meterOnset = true }
+            meterHopCounter += 1
+            if meterHopCounter >= 6 {
+                onMeter?(fastEnv, thresh, meterOnset)
+                meterHopCounter = 0
+                meterOnset = false
             }
             i = end
         }
