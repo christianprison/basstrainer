@@ -10,6 +10,7 @@ enum MenuMode {
     case introQuiz          // Songanfänge merken (Abruf-Übung)
     case introRecorder      // Kurator: Song-Anfänge einspielen → DB
     case curatorSettings    // Kurator-Status / eigene uid
+    case help               // In-App-Hilfe
     case placeholder        // "Kommt bald"
 }
 
@@ -75,6 +76,7 @@ enum MenuConfig {
                 MenuItem(id: "pitch-detection", label: "Noten-Erkennung", description: "Live-Tonhöhe vom (USB-)Audio-Eingang", mode: .tuner),
                 MenuItem(id: "intro-recorder", label: "Intro einspielen", description: "Song-Anfänge aufnehmen & in die DB schreiben (Kurator)", mode: .introRecorder),
                 MenuItem(id: "einstellungen", label: "Einstellungen", description: "Kurator-Status / Geräte-ID (uid)", mode: .curatorSettings),
+                MenuItem(id: "hilfe", label: "Hilfe", description: "Troubleshooting & Bedien-Hinweise", mode: .help),
             ]
         ),
     ]

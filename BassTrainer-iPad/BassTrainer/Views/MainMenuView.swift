@@ -80,6 +80,8 @@ private struct MenuLevelView: View {
             IntroRecorderView()
         case .curatorSettings:
             CuratorSettingsView()
+        case .help:
+            HelpView()
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }
