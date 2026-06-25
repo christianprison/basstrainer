@@ -16,6 +16,7 @@ final class IntroRecorder {
     var gate: Float = 0.02          // Gate (Rauschsperre, absolute Schwelle)
     var attack: Float = 0.4         // schnelle Hüllkurve (0…1, höher = flinker)
     var release: Float = 0.02       // Sustain-Nachführung (klein = träge)
+    var captureRaw = false          // Vollaufnahme für Offline-Analyse mitschneiden
 
     /// (Zeit in CACurrentMediaTime-Sekunden, MIDI, Clarity) eines erkannten Tons.
     var onNote: ((Double, Int, Float) -> Void)?
@@ -48,6 +49,15 @@ final class IntroRecorder {
     // Roh-Ringpuffer (volles Band) für die Pitch-Analyse.
     private var ring: [Float] = []
     private var pending: [(onset: Double, analyzeAt: Double)] = []
+
+    // Vollaufnahme (für Offline-Analyse).
+    private var rawSamples: [Float] = []
+    private var rawStart: Double = -1
+
+    /// Aufgezeichnete Audiospur nach dem Stop.
+    func rawAudio() -> (samples: [Float], startTime: Double, sampleRate: Double) {
+        (rawSamples, rawStart, sampleRate)
+    }
 
     // MARK: - Lifecycle
 
@@ -102,6 +112,8 @@ final class IntroRecorder {
             let input = engine.inputNode
             let inFormat = input.inputFormat(forBus: 0)
             sampleRate = inFormat.sampleRate
+            rawSamples.removeAll(keepingCapacity: true)
+            rawStart = -1
 
             engine.attach(tickPlayer)
             let outFormat = engine.mainMixerNode.outputFormat(forBus: 0)
@@ -156,8 +168,13 @@ final class IntroRecorder {
         let bufStart = CACurrentMediaTime() - Double(n) / sampleRate
         let bufEnd = bufStart + Double(n) / sampleRate
 
-        // Rohpuffer füllen (für Pitch).
-        for k in 0..<n { ring.append(data[k]) }
+        // Rohpuffer füllen (für Pitch) + ggf. Vollaufnahme für Offline-Analyse.
+        if captureRaw && rawStart < 0 { rawStart = bufStart }
+        let rawCap = Int(sampleRate * 40)
+        for k in 0..<n {
+            ring.append(data[k])
+            if captureRaw && rawSamples.count < rawCap { rawSamples.append(data[k]) }
+        }
         let cap = Int(sampleRate * 0.5)
         if ring.count > cap { ring.removeFirst(ring.count - cap) }
 

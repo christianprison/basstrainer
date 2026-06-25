@@ -30,6 +30,7 @@ struct IntroRecorderView: View {
         case .ready:    readyView
         case .countIn:  recordingView(countingIn: true)
         case .recording: recordingView(countingIn: false)
+        case .analyze:  analyzeView
         case .edit:     editView
         case .denied:   deniedView
         }
@@ -95,26 +96,49 @@ struct IntroRecorderView: View {
     // MARK: - Aufnahme
 
     private func recordingView(countingIn: Bool) -> some View {
+        VStack(spacing: 24) {
+            Spacer()
+            songHeader
+            Image(systemName: countingIn ? "metronome.fill" : "record.circle.fill")
+                .font(.system(size: 54))
+                .foregroundColor(countingIn ? .secondary : .red)
+            Text(countingIn ? "Einzähler … (\(vm.countInBeats) Schläge)" : "Spiele die ersten Töne")
+                .font(.title2).foregroundColor(countingIn ? .secondary : .primary)
+            ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 60)
+            if !countingIn {
+                Text("Wird aufgezeichnet – Erkennung folgt nach dem Stopp.")
+                    .font(.caption).foregroundColor(.secondary)
+                Button(role: .destructive) { vm.stopRecording() } label: {
+                    Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 60)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    // MARK: - Analyse (Offline-Erkennung tweaken)
+
+    private var analyzeView: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 songHeader
-                Text(countingIn ? "Einzähler …" : "Spiele die ersten Töne")
-                    .font(.title3).foregroundColor(countingIn ? .secondary : .primary)
-                ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 40)
                 Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
-                if !countingIn && !vm.captured.isEmpty {
+                if !vm.captured.isEmpty {
                     BassTabView(notes: vm.capturedNotes).padding(.horizontal)
                 }
-                if !countingIn {
-                    WaveformMeterView(samples: vm.meter).padding(.horizontal)
-                }
+                WaveformMeterView(samples: vm.meter).padding(.horizontal)
+                Text("Regler verschieben → Erkennung wird auf der Aufnahme neu berechnet.")
+                    .font(.caption2).foregroundColor(.secondary)
                 detectionSettings
-                if !countingIn {
-                    Button(role: .destructive) { vm.stopRecording() } label: {
-                        Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 40)
+                HStack {
+                    Button { vm.phase = .ready } label: { Label("Neu aufnehmen", systemImage: "record.circle") }
+                    Spacer()
+                    Button { vm.phase = .edit } label: { Label("Übernehmen", systemImage: "checkmark") }
+                        .buttonStyle(.borderedProminent)
                 }
+                .padding(.horizontal, 30).padding(.top, 4)
             }
             .padding()
         }
@@ -174,7 +198,7 @@ struct IntroRecorderView: View {
                 Spacer()
                 Button { vm.preview() } label: { Label("Vorschau", systemImage: "play") }
                 Spacer()
-                Button { vm.startRecording() } label: { Label("Neu", systemImage: "record.circle") }
+                Button { vm.phase = .ready } label: { Label("Neu", systemImage: "record.circle") }
             }
             Button { vm.save() } label: {
                 Label(vm.saving ? "Speichere …" : "In Datenbank speichern", systemImage: "icloud.and.arrow.up")
@@ -399,7 +423,7 @@ struct WaveformMeterView: View {
 
 @MainActor
 final class IntroRecorderViewModel: ObservableObject {
-    enum Phase { case pickSong, ready, countIn, recording, edit, denied }
+    enum Phase { case pickSong, ready, countIn, recording, analyze, edit, denied }
 
     @Published var phase: Phase = .pickSong
     @Published var songs: [CatalogSong] = []
@@ -411,12 +435,12 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var status: String?
     @Published var saving = false
     @Published var tempo: Double = 100   // Einspiel-Tempo (BPM), anpassbar
-    @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity) } }
-    @Published var gain: Double = 12        { didSet { recorder.inputGain = Float(gain) } }
-    @Published var gate: Double = 0.02      { didSet { recorder.gate = Float(gate) } }
-    @Published var attack: Double = 0.4     { didSet { recorder.attack = Float(attack) } }
-    @Published var release: Double = 0.02   { didSet { recorder.release = Float(release) } }
-    @Published var refractory: Double = 70  { didSet { recorder.refractoryMs = refractory } }
+    @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity); analysisDirty() } }
+    @Published var gain: Double = 12        { didSet { recorder.inputGain = Float(gain); analysisDirty() } }
+    @Published var gate: Double = 0.02      { didSet { recorder.gate = Float(gate); analysisDirty() } }
+    @Published var attack: Double = 0.4     { didSet { recorder.attack = Float(attack); analysisDirty() } }
+    @Published var release: Double = 0.02   { didSet { recorder.release = Float(release); analysisDirty() } }
+    @Published var refractory: Double = 70  { didSet { recorder.refractoryMs = refractory; analysisDirty() } }
 
     func applyParams() {
         recorder.sensitivity = Float(sensitivity)
@@ -455,6 +479,12 @@ final class IntroRecorderViewModel: ObservableObject {
     private var downbeatTime: Double = 0
     private var recording = false
 
+    // Aufgezeichnete Audiospur für die Offline-Analyse.
+    private var recordedSamples: [Float] = []
+    private var recordedStartTime: Double = 0
+    private var recordedSampleRate: Double = 48000
+    private var analyzeTask: Task<Void, Never>?
+
     private var beatDur: Double { 60.0 / max(40, tempo) }
 
     func loadSongs() async {
@@ -477,11 +507,13 @@ final class IntroRecorderViewModel: ObservableObject {
     func startRecording() {
         captured = []
         meter = []
+        notes = []
         status = nil
         applyParams()
+        recorder.captureRaw = true                       // ganze Spur mitschneiden
         recorder.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
-        recorder.onMeter = { [weak self] e, t, o in Task { @MainActor in self?.pushMeter(env: e, threshold: t, onset: o) } }
-        recorder.onNote = { [weak self] t, midi, _ in Task { @MainActor in self?.gotNote(time: t, midi: midi) } }
+        recorder.onMeter = nil
+        recorder.onNote = nil                            // Erkennung läuft offline nach dem Stop
         recorder.start { [weak self] granted in
             guard let self else { return }
             if granted { self.beginCountIn() } else { self.phase = .denied }
@@ -512,22 +544,41 @@ final class IntroRecorderViewModel: ObservableObject {
         }
     }
 
-    private func gotNote(time: Double, midi: Int) {
-        guard recording, time >= downbeatTime - 0.05 else { return }
-        captured.append((time, midi))
-    }
-
-    private func pushMeter(env: Float, threshold: Float, onset: Bool) {
-        meter.append(DetectionMeterSample(env: env, threshold: threshold, onset: onset))
-        if meter.count > 220 { meter.removeFirst(meter.count - 220) }
-    }
-
     func stopRecording() {
         scheduler?.invalidate(); scheduler = nil
+        let raw = recorder.rawAudio()
         recorder.stop()
         level = 0
+        recordedSamples = raw.samples
+        recordedStartTime = raw.startTime
+        recordedSampleRate = raw.sampleRate
+        runAnalysis()
+        phase = .analyze
+    }
+
+    /// Offline-Erkennung auf der aufgezeichneten Spur mit den aktuellen Parametern.
+    func runAnalysis() {
+        guard !recordedSamples.isEmpty, recordedStartTime >= 0 else { return }
+        let dbIdx = max(0, Int((downbeatTime - recordedStartTime) * recordedSampleRate))
+        guard dbIdx < recordedSamples.count else { return }
+        let slice = Array(recordedSamples[dbIdx...])
+        let p = IntroAnalyzer.Params(sensitivity: Float(sensitivity), gain: Float(gain), gate: Float(gate),
+                                     attack: Float(attack), release: Float(release), refractoryMs: refractory)
+        let result = IntroAnalyzer.analyze(samples: slice, sampleRate: recordedSampleRate, startTime: downbeatTime, params: p)
+        captured = result.notes.map { (time: $0.time, midi: $0.midi) }
+        meter = result.meter
         buildNotes()
-        phase = .edit
+    }
+
+    /// Re-Analyse (debounced) nach Parameteränderung — nur im Analyse-Schritt.
+    private func analysisDirty() {
+        guard phase == .analyze else { return }
+        analyzeTask?.cancel()
+        analyzeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.runAnalysis()
+        }
     }
 
     private func buildNotes() {
@@ -650,6 +701,7 @@ final class IntroRecorderViewModel: ObservableObject {
 
     func stopAll() {
         scheduler?.invalidate(); scheduler = nil
+        analyzeTask?.cancel(); analyzeTask = nil
         recorder.stop()
         recording = false
         level = 0
