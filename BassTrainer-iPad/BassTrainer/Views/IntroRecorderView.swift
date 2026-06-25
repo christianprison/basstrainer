@@ -1,5 +1,6 @@
 import SwiftUI
 import QuartzCore
+import AVFoundation
 
 /// Kurator-Übung „Intro einspielen": Anfänge einspielen, korrigieren und
 /// direkt in die zentrale DB schreiben (DELETE+POST). Nur Kuratoren dürfen
@@ -218,6 +219,7 @@ struct IntroRecorderView: View {
                     BassTabView(notes: vm.capturedNotes).padding(.horizontal)
                 }
                 WaveformMeterView(samples: vm.meter).padding(.horizontal)
+                playbackControls
                 Text("Regler verschieben → Erkennung wird auf der Aufnahme neu berechnet.")
                     .font(.caption2).foregroundColor(.secondary)
                 detectionSettings
@@ -236,6 +238,7 @@ struct IntroRecorderView: View {
                     BassTabView(notes: vm.notes)
                 }
                 .padding(.horizontal, 16).padding(.top, 8)
+                playbackControls.padding(.vertical, 6)
                 Divider()
             }
             List {
@@ -285,6 +288,23 @@ struct IntroRecorderView: View {
     }
 
     // MARK: - Bausteine
+
+    private var playbackControls: some View {
+        HStack(spacing: 14) {
+            Button { vm.toggleRecordingPlayback() } label: {
+                Label(vm.playingRecording ? "Aufnahme – Stop" : "Aufnahme – Loop",
+                      systemImage: vm.playingRecording ? "stop.circle.fill" : "waveform.circle")
+            }
+            .disabled(!vm.hasRecording)
+            Button { vm.togglePatternPlayback() } label: {
+                Label(vm.playingPattern ? "Pattern – Stop" : "Pattern – Loop",
+                      systemImage: vm.playingPattern ? "stop.circle.fill" : "music.note")
+            }
+            .disabled(vm.notes.isEmpty)
+        }
+        .font(.subheadline)
+        .buttonStyle(.bordered)
+    }
 
     private var detectionSettings: some View {
         VStack(spacing: 6) {
@@ -530,6 +550,8 @@ final class IntroRecorderViewModel: ObservableObject {
     @Published var status: String?
     @Published var saving = false
     @Published var tempo: Double = 100   // Einspiel-Tempo (BPM), anpassbar
+    @Published var playingRecording = false
+    @Published var playingPattern = false
     @Published var sensitivity: Double = 0.6 { didSet { recorder.sensitivity = Float(sensitivity); analysisDirty() } }
     @Published var gain: Double = 12        { didSet { recorder.inputGain = Float(gain); analysisDirty() } }
     @Published var gate: Double = 0.02      { didSet { recorder.gate = Float(gate); analysisDirty() } }
@@ -580,6 +602,12 @@ final class IntroRecorderViewModel: ObservableObject {
     private var recordedSampleRate: Double = 48000
     private var analyzeTask: Task<Void, Never>?
 
+    // Abhören (Loop).
+    private var recordingPlayer: AVAudioPlayer?
+    private var patternTimer: Timer?
+
+    var hasRecording: Bool { !recordedSamples.isEmpty }
+
     private var beatDur: Double { 60.0 / max(40, tempo) }
 
     func loadSongs() async {
@@ -600,6 +628,8 @@ final class IntroRecorderViewModel: ObservableObject {
     // MARK: Aufnahme
 
     func startRecording() {
+        stopRecordingPlayback()
+        stopPatternPlayback()
         captured = []
         meter = []
         notes = []
@@ -764,6 +794,61 @@ final class IntroRecorderViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay), execute: work)
     }
 
+    // MARK: Abhören (Loop)
+
+    /// Spielt die mitgeschnittene Aufnahme (ab Basseinsatz) als Endlosschleife.
+    func toggleRecordingPlayback() {
+        if playingRecording { stopRecordingPlayback(); return }
+        stopPatternPlayback()
+        guard !recordedSamples.isEmpty else { return }
+        let dbIdx = max(0, Int((downbeatTime - recordedStartTime) * recordedSampleRate))
+        let slice = dbIdx < recordedSamples.count ? Array(recordedSamples[dbIdx...]) : recordedSamples
+        recordingPlayer = audio.makeLoopingPlayer(samples: slice, sampleRate: recordedSampleRate)
+        recordingPlayer?.play()
+        playingRecording = recordingPlayer != nil
+    }
+
+    private func stopRecordingPlayback() {
+        recordingPlayer?.stop()
+        recordingPlayer = nil
+        playingRecording = false
+    }
+
+    /// Spielt das erkannte Pattern (Bass-Samples an den erkannten Stellen) als Loop.
+    func togglePatternPlayback() {
+        if playingPattern { stopPatternPlayback(); return }
+        stopRecordingPlayback()
+        guard !notes.isEmpty else { return }
+        playingPattern = true
+        playPatternOnce()
+        patternTimer = Timer.scheduledTimer(withTimeInterval: patternDuration, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.playPatternOnce() }
+        }
+    }
+
+    private func stopPatternPlayback() {
+        patternTimer?.invalidate()
+        patternTimer = nil
+        playingPattern = false
+    }
+
+    private var patternDuration: Double {
+        let firstBeat = notes.map { $0.beat }.min() ?? 0
+        let lastEnd = notes.map { $0.beat + ($0.durationBeats ?? 0.25) }.max() ?? 4
+        return max(0.5, lastEnd - firstBeat + 1.0) * beatDur
+    }
+
+    private func playPatternOnce() {
+        let firstBeat = notes.map { $0.beat }.min() ?? 0
+        for n in notes {
+            let t = 0.05 + (n.beat - firstBeat) * beatDur
+            let midi = n.midi
+            schedule(after: t) { [weak self] in
+                self?.audio.playBassNote(position: BassIntro.fretPosition(forMidi: midi))
+            }
+        }
+    }
+
     func save() {
         guard let song = selectedSong else { return }
         saving = true
@@ -797,6 +882,8 @@ final class IntroRecorderViewModel: ObservableObject {
     func stopAll() {
         scheduler?.invalidate(); scheduler = nil
         analyzeTask?.cancel(); analyzeTask = nil
+        stopRecordingPlayback()
+        stopPatternPlayback()
         recorder.stop()
         recording = false
         level = 0
