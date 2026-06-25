@@ -231,27 +231,27 @@ struct IntroRecorderView: View {
 
     private var detectionSettings: some View {
         VStack(spacing: 6) {
-            paramSlider("Empfindlichkeit", $vm.sensitivity, 0...1) { "\(Int($0 * 100)) %" }
-            paramSlider("Gain", $vm.gain, 1...40) { String(format: "%.0f×", $0) }
-            paramSlider("Gate", $vm.gate, 0...0.15) { String(format: "%.3f", $0) }
-            paramSlider("Attack", $vm.attack, 0.1...0.9) { String(format: "%.2f", $0) }
-            paramSlider("Release", $vm.release, 0.005...0.1) { String(format: "%.3f", $0) }
-            paramSlider("Refraktär", $vm.refractory, 40...200) { "\(Int($0)) ms" }
+            ParamSlider(title: "Empfindlichkeit", value: $vm.sensitivity, range: 0...1,
+                        help: "Wie deutlich ein Anschlag über dem laufenden Pegel liegen muss, um als Ton zu zählen. Höher = mehr (auch leise) Töne, aber mehr Fehltreffer. Hochdrehen, wenn Töne fehlen.",
+                        format: { "\(Int($0 * 100)) %" })
+            ParamSlider(title: "Gain", value: $vm.gain, range: 1...40,
+                        help: "Eingangsverstärkung. Hochdrehen bei leisem Signal (schwacher Pickup, leise gespielt), runter bei Übersteuerung.",
+                        format: { String(format: "%.0f×", $0) })
+            ParamSlider(title: "Gate", value: $vm.gate, range: 0...0.15,
+                        help: "Rauschsperre: Pegel darunter wird ignoriert. Höher, wenn Brummen/Rauschen fälschlich Töne auslöst; runter, wenn leise Töne verschluckt werden.",
+                        format: { String(format: "%.3f", $0) })
+            ParamSlider(title: "Attack", value: $vm.attack, range: 0.1...0.9,
+                        help: "Wie schnell die Pegelkurve auf einen Anschlag reagiert. Höher = flinker bei perkussiven/schnellen Anschlägen; zu hoch kann zappeln.",
+                        format: { String(format: "%.2f", $0) })
+            ParamSlider(title: "Release", value: $vm.release, range: 0.005...0.1,
+                        help: "Wie träge die Bezugslinie dem Sustain folgt. Klein = träge, trennt aufeinanderfolgende Töne besser. Größer, wenn lange Töne fälschlich mehrfach erkannt werden.",
+                        format: { String(format: "%.3f", $0) })
+            ParamSlider(title: "Refraktär", value: $vm.refractory, range: 40...200,
+                        help: "Mindestabstand zwischen zwei erkannten Anschlägen (ms). Klein für schnelle Läufe; größer, wenn ein Anschlag doppelt erkannt wird.",
+                        format: { "\(Int($0)) ms" })
             Button("Standardwerte") { vm.resetParams() }.font(.caption).padding(.top, 2)
         }
         .padding(.horizontal, 30)
-    }
-
-    private func paramSlider(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>,
-                             format: @escaping (Double) -> String) -> some View {
-        VStack(spacing: 1) {
-            HStack {
-                Text(title).font(.caption).foregroundColor(.secondary)
-                Spacer()
-                Text(format(value.wrappedValue)).font(.caption2).monospacedDigit().foregroundColor(.secondary)
-            }
-            Slider(value: value, in: range)
-        }
     }
 
     private func stepper(systemImage: String, _ action: @escaping () -> Void) -> some View {
@@ -415,6 +415,41 @@ struct WaveformMeterView: View {
         HStack(spacing: 3) {
             Circle().fill(color).frame(width: 7, height: 7)
             Text(text).foregroundColor(.secondary)
+        }
+    }
+}
+
+/// Regler mit Label, Wert und „ⓘ"-Hilfetext (Popover).
+private struct ParamSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let help: String
+    let format: (Double) -> String
+    @State private var showHelp = false
+
+    var body: some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 5) {
+                Text(title).font(.caption).foregroundColor(.secondary)
+                Button { showHelp = true } label: {
+                    Image(systemName: "info.circle").font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.accentColor)
+                .popover(isPresented: $showHelp) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(title).font(.headline)
+                        Text(help).font(.callout).foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: 320)
+                    .presentationCompactAdaptation(.popover)
+                }
+                Spacer()
+                Text(format(value)).font(.caption2).monospacedDigit().foregroundColor(.secondary)
+            }
+            Slider(value: $value, in: range)
         }
     }
 }
