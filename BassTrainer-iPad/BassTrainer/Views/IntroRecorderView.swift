@@ -10,29 +10,130 @@ struct IntroRecorderView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("Intro einspielen")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { vm.stopAll(); dismiss() } label: { Label("Menü", systemImage: "chevron.left") }
-                    }
+            // Feste Aufteilung: Kopf (oben) · Arbeitsbereich (Mitte) · Aktionsleiste (unten).
+            VStack(spacing: 0) {
+                headerBar
+                Divider()
+                workArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                bottomBar
+            }
+            .navigationTitle("Intro einspielen")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { vm.stopAll(); dismiss() } label: { Label("Menü", systemImage: "chevron.left") }
                 }
+            }
         }
         .task { if vm.songs.isEmpty { await vm.loadSongs() } }
         .onDisappear { vm.stopAll() }
     }
 
-    @ViewBuilder
-    private var content: some View {
+    // MARK: - Kopfzeile (fix)
+
+    private var headerBar: some View {
+        VStack(spacing: 2) {
+            Text(vm.selectedSong?.name ?? "Song wählen").font(.headline).lineLimit(1)
+            HStack(spacing: 10) {
+                if let artist = vm.selectedSong?.artist { Text(artist) }
+                if let bpm = vm.selectedSong?.bpm { Text("\(bpm) BPM") }
+                Text(phaseLabel).foregroundColor(.accentColor)
+            }
+            .font(.caption).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    private var phaseLabel: String {
         switch vm.phase {
-        case .pickSong: songPicker
-        case .ready:    readyView
-        case .countIn:  recordingView(countingIn: true)
-        case .recording: recordingView(countingIn: false)
-        case .analyze:  analyzeView
-        case .edit:     editView
-        case .denied:   deniedView
+        case .pickSong:  return "Song wählen"
+        case .ready:     return "Bereit"
+        case .countIn:   return "Einzähler"
+        case .recording: return "Aufnahme läuft"
+        case .analyze:   return "Analyse"
+        case .edit:      return "Korrektur"
+        case .denied:    return "Mikrofon"
+        }
+    }
+
+    // MARK: - Arbeitsbereich (Mitte)
+
+    @ViewBuilder
+    private var workArea: some View {
+        switch vm.phase {
+        case .pickSong:  songPicker
+        case .ready:     readyContent
+        case .countIn:   recordingContent(countingIn: true)
+        case .recording: recordingContent(countingIn: false)
+        case .analyze:   analyzeContent
+        case .edit:      editContent
+        case .denied:    deniedContent
+        }
+    }
+
+    // MARK: - Aktionsleiste (fix, unten)
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        switch vm.phase {
+        case .pickSong, .countIn:
+            EmptyView()
+        default:
+            VStack(spacing: 0) {
+                Divider()
+                bottomButtons.padding()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bottomButtons: some View {
+        switch vm.phase {
+        case .ready:
+            HStack {
+                Button("Anderer Song") { vm.reset() }
+                Spacer()
+                Button { vm.startRecording() } label: { Label("Aufnahme starten", systemImage: "record.circle") }
+                    .buttonStyle(.borderedProminent)
+            }
+        case .recording:
+            Button(role: .destructive) { vm.stopRecording() } label: {
+                Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+        case .analyze:
+            HStack {
+                Button { vm.phase = .ready } label: { Label("Neu", systemImage: "record.circle") }
+                Spacer()
+                Button { vm.phase = .edit } label: { Label("Übernehmen", systemImage: "checkmark") }
+                    .buttonStyle(.borderedProminent)
+            }
+        case .edit:
+            editActions
+        case .denied:
+            Button("Zurück") { vm.phase = .ready }.buttonStyle(.bordered)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var editActions: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button { vm.addNote() } label: { Label("Ton", systemImage: "plus") }
+                Spacer()
+                Button { vm.preview() } label: { Label("Vorschau", systemImage: "play") }
+                Spacer()
+                Button { vm.phase = .ready } label: { Label("Neu", systemImage: "record.circle") }
+            }
+            Button { vm.save() } label: {
+                Label(vm.saving ? "Speichere …" : "In Datenbank speichern", systemImage: "icloud.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            .disabled(vm.saving || vm.notes.isEmpty)
         }
     }
 
@@ -62,13 +163,12 @@ struct IntroRecorderView: View {
 
     // MARK: - Bereit
 
-    private var readyView: some View {
+    private var readyContent: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                songHeader
-                Text(vm.notes.isEmpty ? "Noch kein Anfang hinterlegt." : "\(vm.notes.count) Töne hinterlegt.")
-                    .foregroundColor(.secondary)
-                if !vm.notes.isEmpty {
+            VStack(spacing: 16) {
+                if vm.notes.isEmpty {
+                    Text("Noch kein Anfang hinterlegt.").foregroundColor(.secondary)
+                } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Gespeicherter Anfang").font(.caption).foregroundColor(.secondary)
                         BassTabView(notes: vm.notes)
@@ -80,14 +180,9 @@ struct IntroRecorderView: View {
                 }
                 .padding(.horizontal, 30)
                 detectionSettings
-                Button { vm.startRecording() } label: {
-                    Label("Aufnahme starten", systemImage: "record.circle").font(.headline)
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
                 if !vm.notes.isEmpty {
-                    Button("Vorhandene bearbeiten") { vm.phase = .edit }
+                    Button("Vorhandene bearbeiten") { vm.phase = .edit }.font(.caption)
                 }
-                Button("Anderen Song wählen") { vm.reset() }.font(.caption)
             }
             .padding()
         }
@@ -95,10 +190,9 @@ struct IntroRecorderView: View {
 
     // MARK: - Aufnahme
 
-    private func recordingView(countingIn: Bool) -> some View {
-        VStack(spacing: 24) {
+    private func recordingContent(countingIn: Bool) -> some View {
+        VStack(spacing: 20) {
             Spacer()
-            songHeader
             Image(systemName: countingIn ? "metronome.fill" : "record.circle.fill")
                 .font(.system(size: 54))
                 .foregroundColor(countingIn ? .secondary : .red)
@@ -108,10 +202,6 @@ struct IntroRecorderView: View {
             if !countingIn {
                 Text("Wird aufgezeichnet – Erkennung folgt nach dem Stopp.")
                     .font(.caption).foregroundColor(.secondary)
-                Button(role: .destructive) { vm.stopRecording() } label: {
-                    Label("Stopp", systemImage: "stop.fill").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 60)
             }
             Spacer()
         }
@@ -120,10 +210,9 @@ struct IntroRecorderView: View {
 
     // MARK: - Analyse (Offline-Erkennung tweaken)
 
-    private var analyzeView: some View {
+    private var analyzeContent: some View {
         ScrollView {
-            VStack(spacing: 16) {
-                songHeader
+            VStack(spacing: 14) {
                 Text("\(vm.captured.count) Töne erkannt").font(.caption).foregroundColor(.secondary)
                 if !vm.captured.isEmpty {
                     BassTabView(notes: vm.capturedNotes).padding(.horizontal)
@@ -132,13 +221,6 @@ struct IntroRecorderView: View {
                 Text("Regler verschieben → Erkennung wird auf der Aufnahme neu berechnet.")
                     .font(.caption2).foregroundColor(.secondary)
                 detectionSettings
-                HStack {
-                    Button { vm.phase = .ready } label: { Label("Neu aufnehmen", systemImage: "record.circle") }
-                    Spacer()
-                    Button { vm.phase = .edit } label: { Label("Übernehmen", systemImage: "checkmark") }
-                        .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal, 30).padding(.top, 4)
             }
             .padding()
         }
@@ -146,7 +228,7 @@ struct IntroRecorderView: View {
 
     // MARK: - Korrektur
 
-    private var editView: some View {
+    private var editContent: some View {
         VStack(spacing: 0) {
             if !vm.notes.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
@@ -163,7 +245,12 @@ struct IntroRecorderView: View {
                     Text("Töne (\(vm.notes.count)) – Tonhöhe & Schlag korrigieren")
                 }
             }
-            controls
+            if let status = vm.status {
+                Text(status).font(.caption)
+                    .foregroundColor(status.hasPrefix("Gespeichert") ? .green : .orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal).padding(.bottom, 4)
+            }
         }
     }
 
@@ -187,47 +274,17 @@ struct IntroRecorderView: View {
         }
     }
 
-    private var controls: some View {
-        VStack(spacing: 8) {
-            if let status = vm.status {
-                Text(status).font(.caption).foregroundColor(status.hasPrefix("Gespeichert") ? .green : .orange)
-                    .multilineTextAlignment(.center)
-            }
-            HStack {
-                Button { vm.addNote() } label: { Label("Ton", systemImage: "plus") }
-                Spacer()
-                Button { vm.preview() } label: { Label("Vorschau", systemImage: "play") }
-                Spacer()
-                Button { vm.phase = .ready } label: { Label("Neu", systemImage: "record.circle") }
-            }
-            Button { vm.save() } label: {
-                Label(vm.saving ? "Speichere …" : "In Datenbank speichern", systemImage: "icloud.and.arrow.up")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(vm.saving || vm.notes.isEmpty)
-        }
-        .padding()
-    }
-
-    private var deniedView: some View {
+    private var deniedContent: some View {
         VStack(spacing: 12) {
             Image(systemName: "mic.slash.fill").font(.system(size: 40)).foregroundColor(.secondary)
             Text("Kein Mikrofon-Zugriff. Bitte in Einstellungen → Datenschutz → Mikrofon aktivieren.")
                 .multilineTextAlignment(.center).foregroundColor(.secondary).padding()
-            Button("Zurück") { vm.phase = .ready }.buttonStyle(.bordered)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
 
     // MARK: - Bausteine
-
-    private var songHeader: some View {
-        VStack(spacing: 4) {
-            Text(vm.selectedSong?.name ?? "—").font(.title2).bold()
-            if let bpm = vm.selectedSong?.bpm { Text("\(bpm) BPM").font(.caption).foregroundColor(.secondary) }
-        }
-    }
 
     private var detectionSettings: some View {
         VStack(spacing: 6) {
