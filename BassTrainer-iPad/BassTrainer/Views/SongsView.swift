@@ -250,9 +250,12 @@ private struct SongGridView: View {
                 pendingStart = nil; pendingEnd = nil
             } label: {
                 Label(markMode ? "Abbrechen" : "Stelle markieren",
-                      systemImage: markMode ? "xmark.circle" : "plus.circle")
-                    .font(.subheadline)
+                      systemImage: markMode ? "xmark.circle" : "plus.circle.fill")
+                    .font(.body.weight(.semibold))
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(markMode ? .red : .accentColor)
             if markMode {
                 Text(pendingStart == nil ? "Ersten Takt antippen" : "Letzten Takt antippen (Start: \(pendingStart!))")
                     .font(.caption).foregroundColor(.secondary)
@@ -493,11 +496,16 @@ private struct SongGridView: View {
     }
 
     private func loop(_ marker: PracticeMarker) {
-        // Im Zusammenhang: Anlauf von 2 Takten vor der Stelle (Übergang).
-        let startBar = marker.mode == .context ? max(1, marker.startBar - 2) : marker.startBar
-        let start = vm.startTime(forBar: startBar) ?? vm.startTime(forBar: marker.startBar)
-        guard let start else { return }
-        let end = vm.endTime(forBar: marker.endBar) ?? player.duration
+        // Im Zusammenhang + Lagenwechsel: 8 Takte Anlauf, 4 Takte Auslauf.
+        // Sonst im Zusammenhang: 2 Takte Anlauf. Reiner Loop: exakt die Stelle.
+        let combo = marker.mode == .context && marker.reason == .shift
+        let leadBars = combo ? 8 : (marker.mode == .context ? 2 : 0)
+        let trailBars = combo ? 4 : 0
+
+        let startBar = max(1, marker.startBar - leadBars)
+        let endBar = marker.endBar + trailBars
+        guard let start = vm.startTime(forBar: startBar) ?? vm.startTime(forBar: marker.startBar) else { return }
+        let end = vm.endTime(forBar: endBar) ?? vm.endTime(forBar: marker.endBar) ?? player.duration
         guard end > start else { return }
         player.playLoop(start: start, end: end, progressive: marker.mode == .loop)
     }
