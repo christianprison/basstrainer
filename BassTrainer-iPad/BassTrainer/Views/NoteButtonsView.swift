@@ -5,10 +5,10 @@ struct NoteButtonsView: View {
     let isDisabled: Bool
     let onNoteTapped: (NoteName) -> Void
 
-    private let buttonSize: CGFloat = 62
-    private let containerHeight: CGFloat = 260
-    private let outerRadius: CGFloat = 140   // Naturtöne
-    private let innerRadius: CGFloat = 84    // Halbtöne (weiter innen)
+    private let buttonSize: CGFloat = 58
+    private let containerHeight: CGFloat = 285
+    private let outerRadius: CGFloat = 150   // Naturtöne
+    private let innerRadius: CGFloat = 74    // Halbtöne (weiter innen)
 
     var body: some View {
         VStack(spacing: 8) {
@@ -60,9 +60,11 @@ struct NoteButtonsView: View {
     /// rechts. Naturtöne außen, Halbtöne auf kleinerem Radius weiter innen.
     private func layout(in size: CGSize) -> [NoteName: CGPoint] {
         var result: [NoteName: CGPoint] = [:]
-        let margin = buttonSize / 2 + 8
-        let leftPivot = CGPoint(x: margin, y: size.height - margin)
-        let rightPivot = CGPoint(x: size.width - margin, y: size.height - margin)
+        // Drehpunkt eine Button-Diagonale weiter innen und oben (statt direkt in der Ecke).
+        let margin = buttonSize / 2 + 6
+        let shift = buttonSize
+        let leftPivot = CGPoint(x: margin + shift, y: size.height - margin - shift)
+        let rightPivot = CGPoint(x: size.width - margin - shift, y: size.height - margin - shift)
 
         let sorted = notes.sorted { pitchClass($0) < pitchClass($1) }
         let leftNat = sorted.filter { pitchClass($0) <= 5 && isNatural($0) }
@@ -70,10 +72,12 @@ struct NoteButtonsView: View {
         let rightNat = sorted.filter { pitchClass($0) >= 6 && isNatural($0) }
         let rightSharp = sorted.filter { pitchClass($0) >= 6 && !isNatural($0) }
 
-        place(leftNat, pivot: leftPivot, radius: outerRadius, fromDeg: 95, toDeg: 8, into: &result)
-        place(leftSharp, pivot: leftPivot, radius: innerRadius, fromDeg: 95, toDeg: 8, into: &result)
-        place(rightNat, pivot: rightPivot, radius: outerRadius, fromDeg: 85, toDeg: 172, into: &result)
-        place(rightSharp, pivot: rightPivot, radius: innerRadius, fromDeg: 85, toDeg: 172, into: &result)
+        // Links C…F (links nach rechts: C oben-außen → F nach innen).
+        place(leftNat, pivot: leftPivot, radius: outerRadius, fromDeg: 92, toDeg: 10, into: &result)
+        place(leftSharp, pivot: leftPivot, radius: innerRadius, fromDeg: 92, toDeg: 10, into: &result)
+        // Rechts G…B (links nach rechts: G innen → B außen, also G=170°, B=92°).
+        place(rightNat, pivot: rightPivot, radius: outerRadius, fromDeg: 170, toDeg: 92, into: &result)
+        place(rightSharp, pivot: rightPivot, radius: innerRadius, fromDeg: 170, toDeg: 92, into: &result)
         return result
     }
 

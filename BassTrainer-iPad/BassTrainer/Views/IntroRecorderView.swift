@@ -790,8 +790,10 @@ final class IntroRecorderViewModel: ObservableObject {
         }
     }
 
-    private func schedule(after delay: Double, _ work: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay), execute: work)
+    private func schedule(after delay: Double, _ work: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay)) {
+            MainActor.assumeIsolated { work() }
+        }
     }
 
     // MARK: Abhören (Loop)

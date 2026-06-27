@@ -501,9 +501,11 @@ final class GameViewModel: ObservableObject {
         beatCounter += 1
 
         metronomeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.audioEngine.playGroove(beatNumber: self.beatCounter)
-            self.beatCounter += 1
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.audioEngine.playGroove(beatNumber: self.beatCounter)
+                self.beatCounter += 1
+            }
         }
     }
 
