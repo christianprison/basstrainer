@@ -165,9 +165,10 @@ final class GameViewModel: ObservableObject {
             startGroove()
         }
 
-        // Start next round after brief delay
+        // Start next round after brief delay — bei Fehlern länger sichtbar.
+        let nextDelay = isCorrect ? 1.0 : 2.6
         feedbackTimer?.invalidate()
-        feedbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+        feedbackTimer = Timer.scheduledTimer(withTimeInterval: nextDelay, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.isPlaying, !self.gameComplete else { return }
                 self.startNewRound()

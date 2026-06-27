@@ -160,17 +160,26 @@ struct ContentView: View {
     }
 
     private func feedbackView(_ feedback: AnswerFeedback) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: feedback == .correct ? "checkmark.circle.fill" : "xmark.circle.fill")
+        let correct = feedback == .correct
+        // Helles, gut unterscheidbares Rot (farbenblind-freundlicher) bzw. Grün.
+        let color: Color = correct
+            ? Color(red: 0.15, green: 0.72, blue: 0.40)
+            : Color(red: 1.0, green: 0.32, blue: 0.30)
+        return HStack(spacing: 12) {
+            Image(systemName: correct ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 40))
+            Text(correct ? "Richtig!" : "Falsch – es war \(viewModel.currentNote.rawValue)")
                 .font(.title2)
-            Text(feedback == .correct ? "Richtig!" : "Falsch – es war \(viewModel.currentNote.rawValue)")
-                .font(.headline)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
         }
-        .foregroundColor(feedback == .correct ? .green : .red)
-        .padding(12)
+        .foregroundColor(color)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 16)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill((feedback == .correct ? Color.green : Color.red).opacity(0.1))
+            RoundedRectangle(cornerRadius: 14)
+                .fill(color.opacity(0.18))
         )
     }
 
