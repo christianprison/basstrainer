@@ -265,11 +265,37 @@ final class AudioEngine: ObservableObject {
         playSamples(samples)
     }
 
+    /// Kurzer Metronom-Klick (betont vs. unbetont).
+    func playMetronomeClick(accent: Bool) {
+        let duration = 0.05
+        let frameCount = Int(sampleRate * duration)
+        var samples = [Float](repeating: 0, count: frameCount)
+        let freq = accent ? 1600.0 : 1000.0
+        let amp = accent ? 0.7 : 0.45
+        for i in 0..<frameCount {
+            let t = Double(i) / sampleRate
+            let envelope = exp(-t * 70.0) * amp
+            samples[i] = Float(envelope * sin(2.0 * .pi * freq * t))
+        }
+        playSamples(samples)
+    }
+
     // MARK: - Private: WAV Playback
+
+    /// Erzeugt einen Endlos-Loop-Player aus rohen Samples (für „Aufnahme abhören").
+    func makeLoopingPlayer(samples: [Float], sampleRate: Double) -> AVAudioPlayer? {
+        guard !samples.isEmpty else { return nil }
+        let wav = buildWav(samples: samples, sampleRate: sampleRate)
+        guard let player = try? AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue) else { return nil }
+        player.numberOfLoops = -1
+        player.volume = 1.0
+        player.prepareToPlay()
+        return player
+    }
 
     private func playSamples(_ samples: [Float]) {
         // Build WAV data in memory
-        let wavData = buildWav(samples: samples)
+        let wavData = buildWav(samples: samples, sampleRate: sampleRate)
 
         // Clean up finished players
         activePlayers.removeAll { !$0.isPlaying }
@@ -287,7 +313,7 @@ final class AudioEngine: ObservableObject {
         }
     }
 
-    private func buildWav(samples: [Float]) -> Data {
+    private func buildWav(samples: [Float], sampleRate: Double) -> Data {
         let numChannels: UInt16 = 1
         let bitsPerSample: UInt16 = 16
         let sr = UInt32(sampleRate)

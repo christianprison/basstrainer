@@ -1,0 +1,12 @@
+# fastlane Matchfile — verschlüsselte Zertifikate/Profile in separatem Git-Repo.
+# git_url + Passphrase kommen aus Secrets (MATCH_GIT_URL, MATCH_PASSWORD).
+
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+
+type("appstore")
+app_identifier(["de.prisons.basstrainer"])
+
+# In CI nur lesen — neue Zertifikate erzeugst du einmalig lokal
+# (siehe fastlane/README.md).
+readonly(true)

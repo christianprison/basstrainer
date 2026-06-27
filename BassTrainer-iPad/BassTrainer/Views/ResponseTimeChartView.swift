@@ -8,12 +8,12 @@ struct ResponseTimeChartView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Response Times by Position (String & Fret)")
+            Text("Antwortzeiten nach Position (Saite & Bund)")
                 .font(.caption)
                 .fontWeight(.semibold)
 
             if data.isEmpty {
-                Text("Start playing to see response time data")
+                Text("Spiele, um Antwortzeiten zu sehen")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 100)
@@ -75,7 +75,7 @@ struct ResponseTimeChartView: View {
 
     private var legend: some View {
         HStack {
-            Text("Grouped by fret, then by string (B-E-A-D-G)")
+            Text("Gruppiert nach Bund, dann nach Saite (B-E-A-D-G)")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
 

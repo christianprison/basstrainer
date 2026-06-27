@@ -12,8 +12,8 @@ struct LearningLevel: Identifiable {
     static let levels: [LearningLevel] = [
         LearningLevel(
             id: 1,
-            name: "Level 1: First Frets",
-            description: "Learn natural notes on frets 0, 3, 5, 7 with 50% balance",
+            name: "Level 1: Erste Bünde",
+            description: "Stammtöne auf den Bünden 0, 3, 5, 7 – 50% Balance",
             notes: NoteName.naturalNotes,
             frets: [0, 3, 5, 7],
             targetBalance: 50,
@@ -21,8 +21,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 2,
-            name: "Level 2: Add Fret 9",
-            description: "Natural notes on frets 3, 5, 7, 9 with 60% balance",
+            name: "Level 2: Bund 9 dazu",
+            description: "Stammtöne auf den Bünden 3, 5, 7, 9 – 60% Balance",
             notes: NoteName.naturalNotes,
             frets: [3, 5, 7, 9],
             targetBalance: 60,
@@ -30,8 +30,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 3,
-            name: "Level 3: Add Fret 12",
-            description: "Natural notes on frets 3, 5, 7, 9, 12 with 70% balance",
+            name: "Level 3: Bund 12 dazu",
+            description: "Stammtöne auf den Bünden 3, 5, 7, 9, 12 – 70% Balance",
             notes: NoteName.naturalNotes,
             frets: [3, 5, 7, 9, 12],
             targetBalance: 70,
@@ -39,8 +39,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 4,
-            name: "Level 4: Add Fret 15",
-            description: "Natural notes on frets 3, 5, 7, 9, 12, 15 with 80% balance",
+            name: "Level 4: Bund 15 dazu",
+            description: "Stammtöne auf den Bünden 3, 5, 7, 9, 12, 15 – 80% Balance",
             notes: NoteName.naturalNotes,
             frets: [3, 5, 7, 9, 12, 15],
             targetBalance: 80,
@@ -48,8 +48,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 5,
-            name: "Level 5: Add Fret 17",
-            description: "Natural notes on frets 3, 5, 7, 9, 12, 15, 17 with 90% balance",
+            name: "Level 5: Bund 17 dazu",
+            description: "Stammtöne auf den Bünden 3, 5, 7, 9, 12, 15, 17 – 90% Balance",
             notes: NoteName.naturalNotes,
             frets: [3, 5, 7, 9, 12, 15, 17],
             targetBalance: 90,
@@ -57,8 +57,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 6,
-            name: "Level 6: Add Sharps/Flats",
-            description: "All notes on frets 3, 5, 7, 9, 12, 15, 17, 19 with 50% balance",
+            name: "Level 6: Mit Vorzeichen",
+            description: "Alle Töne auf den Bünden 3, 5, 7, 9, 12, 15, 17, 19 – 50% Balance",
             notes: NoteName.allNotes,
             frets: [3, 5, 7, 9, 12, 15, 17, 19],
             targetBalance: 50,
@@ -66,8 +66,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 7,
-            name: "Level 7: Add Fret 21",
-            description: "All notes on frets 3, 5, 7, 9, 12, 15, 17, 19, 21 with 70% balance",
+            name: "Level 7: Bund 21 dazu",
+            description: "Alle Töne auf den Bünden 3, 5, 7, 9, 12, 15, 17, 19, 21 – 70% Balance",
             notes: NoteName.allNotes,
             frets: [3, 5, 7, 9, 12, 15, 17, 19, 21],
             targetBalance: 70,
@@ -75,8 +75,8 @@ struct LearningLevel: Identifiable {
         ),
         LearningLevel(
             id: 8,
-            name: "Level 8: Master All Frets",
-            description: "All notes on frets 3, 5, 7, 9, 12, 15, 17, 19, 21, 24 with 90% balance",
+            name: "Level 8: Alle Bünde",
+            description: "Alle Töne auf den Bünden 3, 5, 7, 9, 12, 15, 17, 19, 21, 24 – 90% Balance",
             notes: NoteName.allNotes,
             frets: [3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
             targetBalance: 90,

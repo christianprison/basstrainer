@@ -74,9 +74,9 @@ struct StatsHeaderView: View {
 
     private var statsRow: some View {
         HStack(spacing: 16) {
-            StatItem(label: "Correct", value: "\(gameStats.correct)", color: .green)
-            StatItem(label: "Wrong", value: "\(gameStats.incorrect)", color: .red)
-            StatItem(label: "Streak", value: "\(gameStats.streak)", color: .accentColor)
+            StatItem(label: "Richtig", value: "\(gameStats.correct)", color: .green)
+            StatItem(label: "Falsch", value: "\(gameStats.incorrect)", color: .red)
+            StatItem(label: "Serie", value: "\(gameStats.streak)", color: .accentColor)
             HStack(spacing: 4) {
                 Image(systemName: "trophy.fill")
                     .font(.caption)
@@ -109,7 +109,7 @@ struct StatsHeaderView: View {
             .buttonStyle(.plain)
 
             Button(action: onReset) {
-                Label("Reset", systemImage: "arrow.counterclockwise")
+                Label("Zurücksetzen", systemImage: "arrow.counterclockwise")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .padding(.horizontal, 12)

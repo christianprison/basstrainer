@@ -67,7 +67,7 @@ struct BalanceGaugeView: View {
     private var attemptsProgressView: some View {
         VStack(spacing: 8) {
             HStack {
-                Text("Progress to Balance Tracking")
+                Text("Fortschritt bis zur Balance-Messung")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -83,7 +83,7 @@ struct BalanceGaugeView: View {
             ProgressView(value: progressValue)
                 .tint(.accentColor)
 
-            Text("Each position needs 3+ correct answers before balance is calculated")
+            Text("Jede Position braucht 3+ richtige Antworten, bevor die Balance berechnet wird")
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
