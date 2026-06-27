@@ -80,12 +80,14 @@ struct NoteButtonsView: View {
     private func place(_ group: [NoteName], pivot: CGPoint, radius: CGFloat,
                        fromDeg: Double, toDeg: Double, into result: inout [NoteName: CGPoint]) {
         let n = group.count
+        let r = Double(radius)
+        let px = Double(pivot.x)
+        let py = Double(pivot.y)
         for (i, note) in group.enumerated() {
             let frac = n <= 1 ? 0.5 : Double(i) / Double(n - 1)
             let deg = fromDeg + (toDeg - fromDeg) * frac
-            let rad = deg * .pi / 180
-            result[note] = CGPoint(x: pivot.x + cos(rad) * radius,
-                                   y: pivot.y - sin(rad) * radius)
+            let rad = deg * Double.pi / 180
+            result[note] = CGPoint(x: px + cos(rad) * r, y: py - sin(rad) * r)
         }
     }
 
