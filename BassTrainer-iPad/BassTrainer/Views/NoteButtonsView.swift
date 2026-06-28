@@ -5,10 +5,15 @@ struct NoteButtonsView: View {
     let isDisabled: Bool
     let onNoteTapped: (NoteName) -> Void
 
-    private let buttonSize: CGFloat = 58
-    private let containerHeight: CGFloat = 285
-    private let outerRadius: CGFloat = 150   // Naturtöne
-    private let innerRadius: CGFloat = 74    // Halbtöne (weiter innen)
+    private let buttonSize: CGFloat = 56
+    private let containerHeight: CGFloat = 300
+    // Ellipse statt Kreis: breiter als hoch → untere Töne liegen weiter innen.
+    private let outerRX: CGFloat = 185       // Naturtöne, horizontal
+    private let outerRY: CGFloat = 140       // Naturtöne, vertikal
+    private let innerRX: CGFloat = 104       // Halbtöne, horizontal
+    private let innerRY: CGFloat = 74        // Halbtöne, vertikal
+    private let shiftX: CGFloat = 74         // weiter zur Mitte
+    private let shiftY: CGFloat = 90         // weiter nach oben
 
     var body: some View {
         VStack(spacing: 8) {
@@ -60,11 +65,10 @@ struct NoteButtonsView: View {
     /// rechts. Naturtöne außen, Halbtöne auf kleinerem Radius weiter innen.
     private func layout(in size: CGSize) -> [NoteName: CGPoint] {
         var result: [NoteName: CGPoint] = [:]
-        // Drehpunkt eine Button-Diagonale weiter innen und oben (statt direkt in der Ecke).
+        // Drehpunkt weiter innen und oben (statt direkt in der Ecke).
         let margin = buttonSize / 2 + 6
-        let shift = buttonSize
-        let leftPivot = CGPoint(x: margin + shift, y: size.height - margin - shift)
-        let rightPivot = CGPoint(x: size.width - margin - shift, y: size.height - margin - shift)
+        let leftPivot = CGPoint(x: margin + shiftX, y: size.height - margin - shiftY)
+        let rightPivot = CGPoint(x: size.width - margin - shiftX, y: size.height - margin - shiftY)
 
         let sorted = notes.sorted { pitchClass($0) < pitchClass($1) }
         let leftNat = sorted.filter { pitchClass($0) <= 5 && isNatural($0) }
@@ -72,26 +76,27 @@ struct NoteButtonsView: View {
         let rightNat = sorted.filter { pitchClass($0) >= 6 && isNatural($0) }
         let rightSharp = sorted.filter { pitchClass($0) >= 6 && !isNatural($0) }
 
-        // Links C…F (links nach rechts: C oben-außen → F nach innen).
-        place(leftNat, pivot: leftPivot, radius: outerRadius, fromDeg: 92, toDeg: 10, into: &result)
-        place(leftSharp, pivot: leftPivot, radius: innerRadius, fromDeg: 92, toDeg: 10, into: &result)
-        // Rechts G…B (links nach rechts: G innen → B außen, also G=170°, B=92°).
-        place(rightNat, pivot: rightPivot, radius: outerRadius, fromDeg: 170, toDeg: 92, into: &result)
-        place(rightSharp, pivot: rightPivot, radius: innerRadius, fromDeg: 170, toDeg: 92, into: &result)
+        // Links C…F (links nach rechts: C oben → F weit innen).
+        place(leftNat, pivot: leftPivot, rx: outerRX, ry: outerRY, fromDeg: 90, toDeg: 18, into: &result)
+        place(leftSharp, pivot: leftPivot, rx: innerRX, ry: innerRY, fromDeg: 90, toDeg: 18, into: &result)
+        // Rechts G…B (links nach rechts: G innen → B außen).
+        place(rightNat, pivot: rightPivot, rx: outerRX, ry: outerRY, fromDeg: 162, toDeg: 90, into: &result)
+        place(rightSharp, pivot: rightPivot, rx: innerRX, ry: innerRY, fromDeg: 162, toDeg: 90, into: &result)
         return result
     }
 
-    private func place(_ group: [NoteName], pivot: CGPoint, radius: CGFloat,
+    private func place(_ group: [NoteName], pivot: CGPoint, rx: CGFloat, ry: CGFloat,
                        fromDeg: Double, toDeg: Double, into result: inout [NoteName: CGPoint]) {
         let n = group.count
-        let r = Double(radius)
+        let rxd = Double(rx)
+        let ryd = Double(ry)
         let px = Double(pivot.x)
         let py = Double(pivot.y)
         for (i, note) in group.enumerated() {
             let frac = n <= 1 ? 0.5 : Double(i) / Double(n - 1)
             let deg = fromDeg + (toDeg - fromDeg) * frac
             let rad = deg * Double.pi / 180
-            result[note] = CGPoint(x: px + cos(rad) * r, y: py - sin(rad) * r)
+            result[note] = CGPoint(x: px + cos(rad) * rxd, y: py - sin(rad) * ryd)
         }
     }
 
