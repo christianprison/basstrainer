@@ -44,6 +44,35 @@ final class PracticeMarkerStore: ObservableObject {
         }
     }
 
+    /// Alle Marker einer Kategorie (songübergreifend) aus der DB; bei Fehler aus dem Cache.
+    func markers(forReason reason: PracticeReason) async -> [PracticeMarker] {
+        await migrateLegacyIfNeeded()
+        do {
+            let token = try await auth.token()
+            let data = try await SupabaseConfig.authedData(
+                method: "GET",
+                path: "practice_markers",
+                query: [
+                    URLQueryItem(name: "reason", value: "eq.\(reason.rawValue)"),
+                    URLQueryItem(name: "select", value: "*"),
+                    URLQueryItem(name: "order", value: "song_id.asc,start_bar.asc"),
+                ],
+                token: token
+            )
+            let rows = try JSONDecoder().decode([PracticeMarker].self, from: data)
+            markers.removeAll { $0.reason == reason }
+            markers.append(contentsOf: rows)
+            saveCache()
+            syncError = nil
+            return rows
+        } catch {
+            syncError = error.localizedDescription
+            return markers
+                .filter { $0.reason == reason }
+                .sorted { ($0.songID, $0.startBar) < ($1.songID, $1.startBar) }
+        }
+    }
+
     /// Legt einen Marker an (DB; bei Fehler lokal als Fallback).
     func add(songID: String, startBar: Int, endBar: Int, reason: PracticeReason, mode: PracticeMode, note: String? = nil) async {
         let s = min(startBar, endBar)

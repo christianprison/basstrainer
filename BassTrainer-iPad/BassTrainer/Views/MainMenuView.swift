@@ -82,6 +82,8 @@ private struct MenuLevelView: View {
             CuratorSettingsView()
         case .help:
             HelpView()
+        case .practiceClass:
+            PracticeClassView(reason: item.practiceReason ?? .other)
         default:
             ComingSoonView(title: item.label, subtitle: item.description)
         }
