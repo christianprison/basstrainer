@@ -208,6 +208,7 @@ private struct SongGridView: View {
     @State private var pendingReason: PracticeReason?
     @State private var pendingMode: PracticeMode = .loop
     @State private var showReasonSheet = false
+    @State private var markerToDelete: PracticeMarker?
 
     /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
     private var maxBar: Int {
@@ -380,6 +381,20 @@ private struct SongGridView: View {
             .frame(maxHeight: 150)
         }
         .background(Color(.secondarySystemBackground).opacity(0.4))
+        .confirmationDialog(
+            "Markierte Stelle löschen?",
+            isPresented: Binding(get: { markerToDelete != nil }, set: { if !$0 { markerToDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: markerToDelete
+        ) { marker in
+            Button("Löschen", role: .destructive) {
+                Task { await store.remove(marker) }
+                markerToDelete = nil
+            }
+            Button("Abbrechen", role: .cancel) { markerToDelete = nil }
+        } message: { marker in
+            Text("Takt \(marker.startBar)–\(marker.endBar) · \(marker.reason.label) wird unwiderruflich gelöscht.")
+        }
     }
 
     private func markerRow(_ marker: PracticeMarker) -> some View {
@@ -400,7 +415,7 @@ private struct SongGridView: View {
             }
             .buttonStyle(.borderless)
             .disabled(!vm.hasTiming || !player.hasTrack)
-            Button(role: .destructive) { Task { await store.remove(marker) } } label: {
+            Button(role: .destructive) { markerToDelete = marker } label: {
                 Image(systemName: "trash").font(.body)
             }
             .buttonStyle(.borderless)
