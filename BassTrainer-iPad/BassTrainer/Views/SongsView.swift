@@ -268,9 +268,12 @@ private struct SongGridView: View {
                         .font(.caption).monospacedDigit().foregroundColor(.secondary)
                 }
                 Button { player.clearLoop() } label: {
-                    Label("Loop aus", systemImage: "repeat.circle.fill").font(.subheadline)
+                    Label("Loop aus", systemImage: "stop.circle.fill")
+                        .font(.headline)
                 }
-                .foregroundColor(.accentColor)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.red)
             }
             Button {
                 Task {
