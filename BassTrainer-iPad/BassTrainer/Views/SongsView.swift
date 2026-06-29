@@ -361,13 +361,14 @@ private struct SongGridView: View {
                     HStack(spacing: 1) {
                         ForEach(starts) { m in
                             Image(systemName: m.reason.systemImage)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(3)
+                                .frame(width: 18, height: 18)
                                 .background(Circle().fill(m.reason.color))
                         }
                     }
-                    .padding(2)
+                    // Mittelpunkt genau auf die obere rechte Ecke des Taktquadrats.
+                    .offset(x: 9, y: -9)
                 }
             }
             .id("gbar-\(bar)")
