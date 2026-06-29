@@ -355,6 +355,21 @@ private struct SongGridView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(strokeColor, lineWidth: (isPending || markerColor != nil) ? 2.5 : 1)
             )
+            .overlay(alignment: .topTrailing) {
+                let starts = songMarkers.filter { $0.startBar == bar }
+                if !starts.isEmpty {
+                    HStack(spacing: 1) {
+                        ForEach(starts) { m in
+                            Image(systemName: m.reason.systemImage)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(3)
+                                .background(Circle().fill(m.reason.color))
+                        }
+                    }
+                    .padding(2)
+                }
+            }
             .id("gbar-\(bar)")
             .contentShape(Rectangle())
             .onTapGesture { tapBar(bar) }
