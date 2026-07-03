@@ -280,6 +280,55 @@ final class AudioEngine: ObservableObject {
         playSamples(samples)
     }
 
+    // MARK: - Drum-Stimmen (synthetisch)
+
+    /// Bassdrum (BD): kurzer Sinus mit fallender Tonhöhe.
+    func playKick() {
+        let duration = 0.20
+        let n = Int(sampleRate * duration)
+        var s = [Float](repeating: 0, count: n)
+        for i in 0..<n {
+            let t = Double(i) / sampleRate
+            let freq = 110.0 * exp(-t * 32.0) + 45.0
+            let env = exp(-t * 11.0) * 0.95
+            s[i] = Float(env * sin(2.0 * .pi * freq * t))
+        }
+        playSamples(s)
+    }
+
+    /// Snare (SD): Rauschen + Ton-Anteil.
+    func playSnare() {
+        let duration = 0.16
+        let n = Int(sampleRate * duration)
+        var s = [Float](repeating: 0, count: n)
+        for i in 0..<n {
+            let t = Double(i) / sampleRate
+            let env = exp(-t * 24.0) * 0.7
+            let tone = sin(2.0 * .pi * 185.0 * t) * 0.35
+            let noise = Double.random(in: -1...1) * 0.9
+            s[i] = Float(env * (tone + noise))
+        }
+        playSamples(s)
+    }
+
+    /// Hihat: kurzes hohes Rauschen; betont = lauter/etwas länger.
+    func playHihat(accent: Bool) {
+        let duration = accent ? 0.05 : 0.035
+        let n = Int(sampleRate * duration)
+        var s = [Float](repeating: 0, count: n)
+        let amp: Double = accent ? 0.5 : 0.26
+        var prev: Double = 0
+        for i in 0..<n {
+            let t = Double(i) / sampleRate
+            let noise = Double.random(in: -1...1)
+            let hp = noise - prev            // grobes Hochpassfilter (heller Klang)
+            prev = noise
+            let env = exp(-t * 95.0) * amp
+            s[i] = Float(env * hp)
+        }
+        playSamples(s)
+    }
+
     // MARK: - Private: WAV Playback
 
     /// Erzeugt einen Endlos-Loop-Player aus rohen Samples (für „Aufnahme abhören").

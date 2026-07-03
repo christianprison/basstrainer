@@ -115,11 +115,12 @@ final class SongPlayer: ObservableObject {
     }
 }
 
-/// Einfaches Metronom (Timer + synthetisierter Klick) im Tempo des Songs.
+/// Schlagzeug-Groove statt Klick: BD auf 1 & 3, SD auf 2 & 4, Hihat auf 8teln
+/// (betont auf den BD/SD-Schlägen). Läuft im Songtempo (4/4).
 @MainActor
 final class Metronome: ObservableObject {
     @Published var isRunning = false
-    @Published var beat = 0
+    @Published var eighth = 0          // Position im Takt (0…7)
     var bpm: Int = 120
 
     private let audio = AudioEngine()
@@ -131,16 +132,24 @@ final class Metronome: ObservableObject {
         guard bpm > 0 else { return }
         stop()
         isRunning = true
-        beat = 0
-        audio.playMetronomeClick(accent: true)
-        let interval = 60.0 / Double(bpm)
+        eighth = 0
+        playSlot(0)
+        let interval = (60.0 / Double(bpm)) / 2.0   // Achtelnoten
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.beat += 1
-                self.audio.playMetronomeClick(accent: self.beat % 4 == 0)
+                self.eighth = (self.eighth + 1) % 8
+                self.playSlot(self.eighth)
             }
         }
+    }
+
+    /// Ein Achtel-Slot des Grundrhythmus.
+    private func playSlot(_ e: Int) {
+        let onDownbeat = (e % 2 == 0)        // Slots 0,2,4,6 = die Viertel
+        audio.playHihat(accent: onDownbeat)  // Hihat 8tel, betont auf BD/SD
+        if e == 0 || e == 4 { audio.playKick() }   // BD auf 1 & 3
+        if e == 2 || e == 6 { audio.playSnare() }  // SD auf 2 & 4
     }
 
     func stop() {
