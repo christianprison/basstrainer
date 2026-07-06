@@ -13,12 +13,18 @@ final class SongPlayer: ObservableObject {
     @Published private(set) var hasTrack = false
     @Published private(set) var loopRate: Float = 1.0
 
+    /// Wird bei jedem Loop-Neustart (Sprung ans Loop-Ende → Anfang) aufgerufen.
+    var onLoopRestart: (@MainActor () -> Void)?
+
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var loop: (start: Double, end: Double)?
     private var loopProgressive = false
     private let minLoopRate: Float = 0.6
     private let rateStep: Float = 0.1
+    // Grenzen für die manuelle Tempo-Steuerung (Speed-Übung).
+    private let manualMin: Float = 0.4
+    let manualMax: Float = 1.5
 
     /// Lädt einen neuen Track (oder leert den Player, wenn kein Pfad vorhanden).
     func load(path: String?) {
@@ -50,6 +56,7 @@ final class SongPlayer: ObservableObject {
                     }
                     self.player?.seek(to: CMTime(seconds: loop.start, preferredTimescale: 600))
                     self.player?.rate = self.loopRate
+                    self.onLoopRestart?()
                     return
                 }
                 self.progress = t
@@ -77,14 +84,33 @@ final class SongPlayer: ObservableObject {
     }
 
     /// Spielt die markierte Stelle als Schleife. `progressive` = langsam → schneller.
-    func playLoop(start: Double, end: Double, progressive: Bool) {
+    /// `startRate` überschreibt das Anfangstempo (für die manuelle Speed-Übung).
+    func playLoop(start: Double, end: Double, progressive: Bool, startRate: Float? = nil) {
         guard let player, end > start else { return }
         loop = (start, end)
         loopProgressive = progressive
-        loopRate = progressive ? minLoopRate : 1.0
+        if let startRate { loopRate = clampRate(startRate) }
+        else { loopRate = progressive ? minLoopRate : 1.0 }
         seek(to: start)
         player.rate = loopRate
         isPlaying = true
+    }
+
+    /// Schaltet die zeitgesteuerte Auto-Beschleunigung am laufenden Loop um.
+    func setProgressive(_ on: Bool) { loopProgressive = on }
+
+    /// Ändert das Loop-Tempo relativ (z. B. ±0.05) und wendet es sofort an.
+    func nudgeRate(by delta: Float) { setLoopRate(loopRate + delta) }
+
+    /// Setzt das Loop-Tempo (auf 5-%-Schritte gerundet, geklemmt).
+    func setLoopRate(_ r: Float) {
+        loopRate = clampRate(r)
+        if loop != nil && isPlaying { player?.rate = loopRate }
+    }
+
+    private func clampRate(_ r: Float) -> Float {
+        let stepped = (r * 20).rounded() / 20          // 5-%-Raster
+        return min(manualMax, max(manualMin, stepped))
     }
 
     /// Beendet den Loop (normale Wiedergabe läuft in Originaltempo weiter).
@@ -113,6 +139,7 @@ final class SongPlayer: ObservableObject {
         isPlaying = false
         progress = 0
         duration = 0
+        onLoopRestart = nil
     }
 }
 
