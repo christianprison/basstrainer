@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import QuartzCore
 
 /// Streamt den Play-along-Track (Full-Song-MP3) aus dem öffentlichen Bucket
 /// und veröffentlicht die laufende Wiedergabezeit.
@@ -115,16 +116,32 @@ final class SongPlayer: ObservableObject {
     }
 }
 
-/// Schlagzeug-Groove statt Klick: BD auf 1 & 3, SD auf 2 & 4, Hihat auf 8teln
-/// (betont auf den BD/SD-Schlägen). Läuft im Songtempo (4/4).
+/// Schlagzeug-Groove statt Klick. Spielt den pro Song hinterlegten
+/// Grundrhythmus (`song_detail_lighting.detail->grundrhythmus`): BD-/SD-Schläge
+/// an frei definierten Positionen im 4/4-Takt (in Viertel-Einheiten:
+/// 0.0 = Zählzeit 1, 1.0 = 2, 2.0 = 3, 3.0 = 4, Nachkommastellen = Unterteilung).
+/// Dazu eine Hihat auf 8teln, betont auf den BD/SD-Positionen.
+/// Ohne Muster (oder BD+SD leer): Standard-Backbeat kick[0,2] snare[1,3].
 @MainActor
 final class Metronome: ObservableObject {
     @Published var isRunning = false
-    @Published var eighth = 0          // Position im Takt (0…7)
+    @Published var eighth = 0          // Position im Takt (0…7), nur für die UI-Anzeige
     var bpm: Int = 120
 
+    /// Pro Song geladenes Muster (Viertel-Positionen). nil ⇒ Standard-Backbeat.
+    var pattern: (kick: [Double], snare: [Double])?
+
     private let audio = AudioEngine()
-    private var timer: Timer?
+    private var runToken = 0
+
+    /// Ein einzelner Schlag innerhalb des Takts.
+    private struct DrumEvent {
+        let beat: Double         // Position in Vierteln (0…<4)
+        let kick: Bool
+        let snare: Bool
+        let hihat: Bool
+        let hihatAccent: Bool
+    }
 
     func toggle() { isRunning ? stop() : start() }
 
@@ -132,29 +149,89 @@ final class Metronome: ObservableObject {
         guard bpm > 0 else { return }
         stop()
         isRunning = true
-        eighth = 0
-        playSlot(0)
-        let interval = (60.0 / Double(bpm)) / 2.0   // Achtelnoten
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.eighth = (self.eighth + 1) % 8
-                self.playSlot(self.eighth)
-            }
-        }
-    }
-
-    /// Ein Achtel-Slot des Grundrhythmus.
-    private func playSlot(_ e: Int) {
-        let onDownbeat = (e % 2 == 0)        // Slots 0,2,4,6 = die Viertel
-        audio.playHihat(accent: onDownbeat)  // Hihat 8tel, betont auf BD/SD
-        if e == 0 || e == 4 { audio.playKick() }   // BD auf 1 & 3
-        if e == 2 || e == 6 { audio.playSnare() }  // SD auf 2 & 4
+        runToken &+= 1
+        scheduleBar(token: runToken, startHost: CACurrentMediaTime())
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        runToken &+= 1
         isRunning = false
+        eighth = 0
+    }
+
+    // MARK: - Muster → Events
+
+    /// Rundet auf das nächste 16tel (Viertel/4), um Duplikate zusammenzufassen.
+    private func round16(_ x: Double) -> Double { (x * 4).rounded() / 4 }
+
+    /// Baut die sortierten Schlag-Events für einen Takt aus dem Muster.
+    private func buildEvents() -> [DrumEvent] {
+        let p = pattern ?? (kick: [0, 2], snare: [1, 3])
+        var kick = Set(p.kick.map(round16))
+        var snare = Set(p.snare.map(round16))
+        // Beide leer ⇒ Standard-Backbeat.
+        if kick.isEmpty && snare.isEmpty {
+            kick = [0, 2]; snare = [1, 3]
+        }
+        // Nur Positionen innerhalb eines 4/4-Takts.
+        kick = kick.filter { $0 >= 0 && $0 < 4 }
+        snare = snare.filter { $0 >= 0 && $0 < 4 }
+
+        // Hihat auf allen 8teln (0.0, 0.5, 1.0 … 3.5).
+        let hihatBeats = Set((0..<8).map { Double($0) * 0.5 })
+
+        let allBeats = kick.union(snare).union(hihatBeats).sorted()
+        return allBeats.map { beat in
+            let hasKick = kick.contains(beat)
+            let hasSnare = snare.contains(beat)
+            let hasHihat = hihatBeats.contains(beat)
+            return DrumEvent(
+                beat: beat,
+                kick: hasKick,
+                snare: hasSnare,
+                hihat: hasHihat,
+                hihatAccent: hasKick || hasSnare   // Hihat betont auf BD/SD
+            )
+        }
+    }
+
+    // MARK: - Scheduling
+
+    /// Plant einen kompletten Takt und hängt am Ende den nächsten an.
+    private func scheduleBar(token: Int, startHost: CFTimeInterval) {
+        guard token == runToken else { return }
+        let secPerBeat = 60.0 / Double(bpm)     // eine Viertel
+        let barLength = secPerBeat * 4
+        let events = buildEvents()
+
+        for ev in events {
+            let at = startHost + ev.beat * secPerBeat
+            schedule(at: at, token: token) { [weak self] in
+                guard let self, token == self.runToken else { return }
+                if ev.kick { self.audio.playKick() }
+                if ev.snare { self.audio.playSnare() }
+                if ev.hihat { self.audio.playHihat(accent: ev.hihatAccent) }
+                self.eighth = Int((ev.beat * 2).rounded()) % 8
+            }
+        }
+
+        // Nächsten Takt exakt am Taktende starten (kein Drift durch Timer-Jitter).
+        let nextStart = startHost + barLength
+        schedule(at: nextStart, token: token) { [weak self] in
+            guard let self, token == self.runToken else { return }
+            self.scheduleBar(token: token, startHost: nextStart)
+        }
+    }
+
+    /// Führt `action` zur absoluten Host-Zeit `at` auf dem Main-Thread aus.
+    private func schedule(at host: CFTimeInterval, token: Int,
+                          _ action: @escaping @MainActor () -> Void) {
+        let delay = max(0, host - CACurrentMediaTime())
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            MainActor.assumeIsolated {
+                guard token == self.runToken else { return }
+                action()
+            }
+        }
     }
 }

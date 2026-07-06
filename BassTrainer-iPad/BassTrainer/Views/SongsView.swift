@@ -136,6 +136,7 @@ struct SongsView: View {
             // Metronom
             Button {
                 metronome.bpm = selectedSong?.bpm ?? 120
+                metronome.pattern = detail.grundrhythmus   // Song-Grundrhythmus (nil ⇒ Backbeat)
                 metronome.toggle()
             } label: {
                 Image(systemName: "metronome\(metronome.isRunning ? ".fill" : "")")
