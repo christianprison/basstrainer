@@ -282,8 +282,11 @@ final class AudioEngine: ObservableObject {
 
     // MARK: - Drum-Stimmen (synthetisch)
 
+    /// Sample-Rate, in der die Groove-Puffer gerendert werden.
+    var grooveSampleRate: Double { sampleRate }
+
     /// Bassdrum (BD): kurzer Sinus mit fallender Tonhöhe.
-    func playKick() {
+    func kickSamples() -> [Float] {
         let duration = 0.20
         let n = Int(sampleRate * duration)
         var s = [Float](repeating: 0, count: n)
@@ -293,11 +296,11 @@ final class AudioEngine: ObservableObject {
             let env = exp(-t * 11.0) * 0.95
             s[i] = Float(env * sin(2.0 * .pi * freq * t))
         }
-        playSamples(s)
+        return s
     }
 
     /// Snare (SD): Rauschen + Ton-Anteil.
-    func playSnare() {
+    func snareSamples() -> [Float] {
         let duration = 0.16
         let n = Int(sampleRate * duration)
         var s = [Float](repeating: 0, count: n)
@@ -308,11 +311,11 @@ final class AudioEngine: ObservableObject {
             let noise = Double.random(in: -1...1) * 0.9
             s[i] = Float(env * (tone + noise))
         }
-        playSamples(s)
+        return s
     }
 
     /// Hihat: kurzes hohes Rauschen; betont = lauter/etwas länger.
-    func playHihat(accent: Bool) {
+    func hihatSamples(accent: Bool) -> [Float] {
         let duration = accent ? 0.05 : 0.035
         let n = Int(sampleRate * duration)
         var s = [Float](repeating: 0, count: n)
@@ -326,8 +329,12 @@ final class AudioEngine: ObservableObject {
             let env = exp(-t * 95.0) * amp
             s[i] = Float(env * hp)
         }
-        playSamples(s)
+        return s
     }
+
+    func playKick() { playSamples(kickSamples()) }
+    func playSnare() { playSamples(snareSamples()) }
+    func playHihat(accent: Bool) { playSamples(hihatSamples(accent: accent)) }
 
     // MARK: - Private: WAV Playback
 
