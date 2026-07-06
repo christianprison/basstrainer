@@ -120,7 +120,8 @@ final class SongPlayer: ObservableObject {
 /// Grundrhythmus (`song_detail_lighting.detail->grundrhythmus`): BD-/SD-Schläge
 /// an frei definierten Positionen im 4/4-Takt (in Viertel-Einheiten:
 /// 0.0 = Zählzeit 1, 1.0 = 2, 2.0 = 3, 3.0 = 4, Nachkommastellen = Unterteilung).
-/// Dazu eine Hihat auf 8teln, betont auf den BD/SD-Positionen.
+/// Dazu eine durchgehende Hihat auf 8teln (unabhängig vom Grundrhythmus,
+/// betont auf den Viertel-Zählzeiten).
 /// Ohne Muster (oder BD+SD leer): Standard-Backbeat kick[0,2] snare[1,3].
 @MainActor
 final class Metronome: ObservableObject {
@@ -185,12 +186,15 @@ final class Metronome: ObservableObject {
             let hasKick = kick.contains(beat)
             let hasSnare = snare.contains(beat)
             let hasHihat = hihatBeats.contains(beat)
+            // Hihat läuft unabhängig vom Grundrhythmus als durchgehende 8tel;
+            // betont nur auf den Viertel-Zählzeiten (1,2,3,4) als gerader Puls.
+            let onDownbeat = beat.truncatingRemainder(dividingBy: 1) == 0
             return DrumEvent(
                 beat: beat,
                 kick: hasKick,
                 snare: hasSnare,
                 hihat: hasHihat,
-                hihatAccent: hasKick || hasSnare   // Hihat betont auf BD/SD
+                hihatAccent: onDownbeat
             )
         }
     }
