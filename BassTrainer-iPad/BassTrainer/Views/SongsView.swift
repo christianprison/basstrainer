@@ -202,6 +202,7 @@ private struct SongGridView: View {
     @ObservedObject var vm: SongDetailViewModel
     @ObservedObject var player: SongPlayer
     @ObservedObject var store: PracticeMarkerStore
+    @StateObject private var speed = SpeedTrainer()
 
     @State private var markMode = false
     @State private var pendingStart: Int?
@@ -233,6 +234,11 @@ private struct SongGridView: View {
     var body: some View {
         VStack(spacing: 0) {
             controlBar
+            if player.isLooping || speed.countInBeat > 0 {
+                Divider()
+                SpeedTrainerBar(trainer: speed, isLooping: player.isLooping)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+            }
             Divider()
             content
             if !songMarkers.isEmpty {
@@ -240,7 +246,8 @@ private struct SongGridView: View {
             }
         }
         .sheet(isPresented: $showReasonSheet) { reasonSheet }
-        .task(id: song.id) { await store.load(songID: song.id) }
+        .task(id: song.id) { speed.stop(); await store.load(songID: song.id) }
+        .onDisappear { speed.stop() }
     }
 
     // MARK: - Steuerleiste
@@ -264,11 +271,7 @@ private struct SongGridView: View {
             }
             Spacer()
             if player.isLooping {
-                if player.loopRate < 1.0 {
-                    Text("\(Int(player.loopRate * 100)) %")
-                        .font(.caption).monospacedDigit().foregroundColor(.secondary)
-                }
-                Button { player.clearLoop() } label: {
+                Button { player.clearLoop(); speed.stop() } label: {
                     Label("Loop aus", systemImage: "stop.circle.fill")
                         .font(.headline)
                 }
@@ -542,7 +545,15 @@ private struct SongGridView: View {
         guard let start = vm.startTime(forBar: startBar) ?? vm.startTime(forBar: marker.startBar) else { return }
         let end = vm.endTime(forBar: endBar) ?? vm.endTime(forBar: marker.endBar) ?? player.duration
         guard end > start else { return }
-        player.playLoop(start: start, end: end, progressive: marker.mode == .loop)
+        // Einzähler + Tempo-/Präzisions-Steuerung (gleicher Baustein wie im Kapitel).
+        speed.stop()
+        speed.configure(player: player, bpm: song.bpm ?? 120)
+        Task { @MainActor in
+            await speed.countIn()
+            player.playLoop(start: start, end: end,
+                            progressive: speed.mode == .autoTime, startRate: speed.startRate)
+            speed.loopStarted()
+        }
     }
 }
 
