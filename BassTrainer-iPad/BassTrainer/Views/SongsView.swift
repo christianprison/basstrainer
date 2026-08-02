@@ -14,6 +14,7 @@ struct SongsView: View {
     @StateObject private var markerStore = PracticeMarkerStore()
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
+    @State private var practiceTempo: Double = 1.0   // Playback- & Metronom-Tempo (1.0 = Normal)
     @Environment(\.dismiss) private var dismiss
 
     private enum MainTab { case lyrics, bars }
@@ -133,9 +134,11 @@ struct SongsView: View {
             }
             Spacer()
 
+            tempoControl
+
             // Metronom
             Button {
-                metronome.bpm = selectedSong?.bpm ?? 120
+                metronome.bpm = scaledBPM
                 metronome.pattern = detail.grundrhythmus   // Song-Grundrhythmus (nil ⇒ Backbeat)
                 metronome.toggle()
             } label: {
@@ -157,6 +160,39 @@ struct SongsView: View {
             .disabled(!player.hasTrack)
         }
         .padding(.horizontal, 24)
+    }
+
+    /// Playback- & Metronom-Tempo ändern; Mitte tippen = zurück auf „Normal".
+    private var tempoControl: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "speedometer").font(.subheadline).foregroundColor(.secondary)
+            Button { adjustTempo(-0.05) } label: { Image(systemName: "minus") }
+                .buttonStyle(.bordered)
+            Button { resetTempo() } label: {
+                Text(practiceTempo == 1.0 ? "Normal" : "\(Int((practiceTempo * 100).rounded())) %")
+                    .font(.caption).monospacedDigit().frame(minWidth: 58)
+            }
+            .buttonStyle(.bordered)
+            Button { adjustTempo(0.05) } label: { Image(systemName: "plus") }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var scaledBPM: Int { Int((Double(selectedSong?.bpm ?? 120) * practiceTempo).rounded()) }
+
+    private func adjustTempo(_ d: Double) {
+        practiceTempo = min(1.2, max(0.5, ((practiceTempo + d) * 20).rounded() / 20))
+        applyTempo()
+    }
+
+    private func resetTempo() { practiceTempo = 1.0; applyTempo() }
+
+    private func applyTempo() {
+        player.setBaseRate(Float(practiceTempo))
+        if metronome.isRunning {
+            metronome.bpm = scaledBPM
+            metronome.reload()
+        }
     }
 
     // Unten rechts (80 % Höhe): Lyrics (Karaoke) oder Takt-Raster
@@ -188,6 +224,7 @@ struct SongsView: View {
     private func selectSong(_ song: CatalogSong?) {
         guard let song else { return }
         selectedID = song.id
+        practiceTempo = 1.0          // neues Lied → Tempo zurück auf Normal
         metronome.stop()
         player.load(path: song.playalongPath)
         Task { await detail.load(songID: song.id) }
@@ -449,25 +486,23 @@ private struct SongGridView: View {
 
     // MARK: - Grund-Auswahl
 
+    /// Sinnvolle Vorbelegung des Übe-Modus je Grund.
+    private func defaultMode(for reason: PracticeReason) -> PracticeMode {
+        switch reason {
+        case .shift, .notes:            return .context   // im Zusammenhang
+        case .speed, .precision, .timing: return .loop    // im Loop
+        case .other:                    return .loop
+        }
+    }
+
     private var reasonSheet: some View {
         NavigationStack {
             Form {
-                Section("Übe-Modus") {
-                    Picker("Modus", selection: $pendingMode) {
-                        ForEach(PracticeMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    Text(pendingMode == .loop
-                         ? "Loop der Stelle – erst langsam, dann schneller (Präzision)."
-                         : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
-                        .font(.caption).foregroundColor(.secondary)
-                }
                 Section("Grund") {
                     ForEach(PracticeReason.allCases) { reason in
                         Button {
                             pendingReason = reason
+                            pendingMode = defaultMode(for: reason)   // sinnvoll vorbelegen
                         } label: {
                             HStack {
                                 Label(reason.label, systemImage: reason.systemImage)
@@ -478,6 +513,20 @@ private struct SongGridView: View {
                                 }
                             }
                         }
+                    }
+                }
+                if pendingReason != nil {
+                    Section("Übe-Modus") {
+                        Picker("Modus", selection: $pendingMode) {
+                            ForEach(PracticeMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(pendingMode == .loop
+                             ? "Loop der Stelle – erst langsam, dann schneller (Präzision)."
+                             : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
+                            .font(.caption).foregroundColor(.secondary)
                     }
                 }
             }

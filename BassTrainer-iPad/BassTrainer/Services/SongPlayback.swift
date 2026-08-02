@@ -11,6 +11,8 @@ final class SongPlayer: ObservableObject {
     @Published var error: String?
     @Published private(set) var hasTrack = false
     @Published private(set) var loopRate: Float = 1.0
+    /// Wiedergabetempo der normalen (nicht geloopten) Wiedergabe. 1.0 = Normal.
+    @Published private(set) var baseRate: Float = 1.0
 
     /// Wird bei jedem Loop-Neustart (Sprung ans Loop-Ende → Anfang) aufgerufen.
     var onLoopRestart: (@MainActor () -> Void)?
@@ -72,9 +74,15 @@ final class SongPlayer: ObservableObject {
             player.pause()
             isPlaying = false
         } else {
-            player.rate = (loop != nil) ? loopRate : 1.0
+            player.rate = (loop != nil) ? loopRate : baseRate
             isPlaying = true
         }
+    }
+
+    /// Setzt das Wiedergabetempo der normalen Wiedergabe (Playback-Übung).
+    func setBaseRate(_ r: Float) {
+        baseRate = min(manualMax, max(0.4, (r * 20).rounded() / 20))
+        if isPlaying && loop == nil { player?.rate = baseRate }
     }
 
     func pause() {
@@ -135,6 +143,7 @@ final class SongPlayer: ObservableObject {
         loop = nil
         loopProgressive = false
         loopRate = 1.0
+        baseRate = 1.0
         isPlaying = false
         progress = 0
         duration = 0
@@ -182,6 +191,9 @@ final class Metronome: ObservableObject {
         player = nil
         isRunning = false
     }
+
+    /// Übernimmt eine geänderte `bpm` live (re-rendert den Loop, falls aktiv).
+    func reload() { if isRunning { start() } }
 
     // MARK: - Muster → 16tel-Raster
 
