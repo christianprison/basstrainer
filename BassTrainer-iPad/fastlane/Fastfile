@@ -55,9 +55,15 @@ platform :ios do
       }
     )
 
+    # "What to Test" / Release Notes aus der Umgebung (vom Workflow gesetzt).
+    changelog = ENV["TF_CHANGELOG"].to_s
+    changelog = nil if changelog.strip.empty?
+
     upload_to_testflight(
       api_key: api_key,
-      skip_waiting_for_build_processing: true,
+      # Zum Setzen der Testhinweise muss auf die Verarbeitung gewartet werden.
+      skip_waiting_for_build_processing: changelog.nil?,
+      changelog: changelog,
       distribute_external: false
     )
   end

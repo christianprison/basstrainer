@@ -56,6 +56,14 @@ jobs:
             echo "MARKETING_VERSION=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi
 
+      - name: Build TestFlight changelog ("What to Test")
+        run: |
+          {
+            echo "TF_CHANGELOG<<__EOF__"
+            git log -1 --pretty=%B
+            echo "__EOF__"
+          } >> "$GITHUB_ENV"
+
       - name: Configure git auth for certs repo
         run: git config --global url."https://christianprison:${MATCH_GIT_TOKEN}@github.com/".insteadOf "https://github.com/"
         env:

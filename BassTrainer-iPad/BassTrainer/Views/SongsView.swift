@@ -14,6 +14,7 @@ struct SongsView: View {
     @StateObject private var markerStore = PracticeMarkerStore()
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
+    @State private var practiceTempo: Double = 1.0   // Playback- & Metronom-Tempo (1.0 = Normal)
     @Environment(\.dismiss) private var dismiss
 
     private enum MainTab { case lyrics, bars }
@@ -133,9 +134,12 @@ struct SongsView: View {
             }
             Spacer()
 
+            tempoControl
+
             // Metronom
             Button {
-                metronome.bpm = selectedSong?.bpm ?? 120
+                metronome.bpm = scaledBPM
+                metronome.pattern = detail.grundrhythmus   // Song-Grundrhythmus (nil ⇒ Backbeat)
                 metronome.toggle()
             } label: {
                 Image(systemName: "metronome\(metronome.isRunning ? ".fill" : "")")
@@ -156,6 +160,39 @@ struct SongsView: View {
             .disabled(!player.hasTrack)
         }
         .padding(.horizontal, 24)
+    }
+
+    /// Playback- & Metronom-Tempo ändern; Mitte tippen = zurück auf „Normal".
+    private var tempoControl: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "speedometer").font(.subheadline).foregroundColor(.secondary)
+            Button { adjustTempo(-0.05) } label: { Image(systemName: "minus") }
+                .buttonStyle(.bordered)
+            Button { resetTempo() } label: {
+                Text(practiceTempo == 1.0 ? "Normal" : "\(Int((practiceTempo * 100).rounded())) %")
+                    .font(.caption).monospacedDigit().frame(minWidth: 58)
+            }
+            .buttonStyle(.bordered)
+            Button { adjustTempo(0.05) } label: { Image(systemName: "plus") }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var scaledBPM: Int { Int((Double(selectedSong?.bpm ?? 120) * practiceTempo).rounded()) }
+
+    private func adjustTempo(_ d: Double) {
+        practiceTempo = min(1.2, max(0.5, ((practiceTempo + d) * 20).rounded() / 20))
+        applyTempo()
+    }
+
+    private func resetTempo() { practiceTempo = 1.0; applyTempo() }
+
+    private func applyTempo() {
+        player.setBaseRate(Float(practiceTempo))
+        if metronome.isRunning {
+            metronome.bpm = scaledBPM
+            metronome.reload()
+        }
     }
 
     // Unten rechts (80 % Höhe): Lyrics (Karaoke) oder Takt-Raster
@@ -187,6 +224,7 @@ struct SongsView: View {
     private func selectSong(_ song: CatalogSong?) {
         guard let song else { return }
         selectedID = song.id
+        practiceTempo = 1.0          // neues Lied → Tempo zurück auf Normal
         metronome.stop()
         player.load(path: song.playalongPath)
         Task { await detail.load(songID: song.id) }
@@ -201,6 +239,7 @@ private struct SongGridView: View {
     @ObservedObject var vm: SongDetailViewModel
     @ObservedObject var player: SongPlayer
     @ObservedObject var store: PracticeMarkerStore
+    @StateObject private var speed = SpeedTrainer()
 
     @State private var markMode = false
     @State private var pendingStart: Int?
@@ -208,6 +247,7 @@ private struct SongGridView: View {
     @State private var pendingReason: PracticeReason?
     @State private var pendingMode: PracticeMode = .loop
     @State private var showReasonSheet = false
+    @State private var markerToDelete: PracticeMarker?
 
     /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
     private var maxBar: Int {
@@ -231,6 +271,11 @@ private struct SongGridView: View {
     var body: some View {
         VStack(spacing: 0) {
             controlBar
+            if player.isLooping || speed.countInBeat > 0 {
+                Divider()
+                SpeedTrainerBar(trainer: speed, isLooping: player.isLooping)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+            }
             Divider()
             content
             if !songMarkers.isEmpty {
@@ -238,7 +283,8 @@ private struct SongGridView: View {
             }
         }
         .sheet(isPresented: $showReasonSheet) { reasonSheet }
-        .task(id: song.id) { await store.load(songID: song.id) }
+        .task(id: song.id) { speed.stop(); await store.load(songID: song.id) }
+        .onDisappear { speed.stop() }
     }
 
     // MARK: - Steuerleiste
@@ -262,14 +308,13 @@ private struct SongGridView: View {
             }
             Spacer()
             if player.isLooping {
-                if player.loopRate < 1.0 {
-                    Text("\(Int(player.loopRate * 100)) %")
-                        .font(.caption).monospacedDigit().foregroundColor(.secondary)
+                Button { player.clearLoop(); speed.stop() } label: {
+                    Label("Loop aus", systemImage: "stop.circle.fill")
+                        .font(.headline)
                 }
-                Button { player.clearLoop() } label: {
-                    Label("Loop aus", systemImage: "repeat.circle.fill").font(.subheadline)
-                }
-                .foregroundColor(.accentColor)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.red)
             }
             Button {
                 Task {
@@ -351,6 +396,22 @@ private struct SongGridView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(strokeColor, lineWidth: (isPending || markerColor != nil) ? 2.5 : 1)
             )
+            .overlay(alignment: .topTrailing) {
+                let starts = songMarkers.filter { $0.startBar == bar }
+                if !starts.isEmpty {
+                    HStack(spacing: 1) {
+                        ForEach(starts) { m in
+                            Image(systemName: m.reason.systemImage)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 18, height: 18)
+                                .background(Circle().fill(m.reason.color))
+                        }
+                    }
+                    // Mittelpunkt genau auf die obere rechte Ecke des Taktquadrats.
+                    .offset(x: 9, y: -9)
+                }
+            }
             .id("gbar-\(bar)")
             .contentShape(Rectangle())
             .onTapGesture { tapBar(bar) }
@@ -380,6 +441,20 @@ private struct SongGridView: View {
             .frame(maxHeight: 150)
         }
         .background(Color(.secondarySystemBackground).opacity(0.4))
+        .confirmationDialog(
+            "Markierte Stelle löschen?",
+            isPresented: Binding(get: { markerToDelete != nil }, set: { if !$0 { markerToDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: markerToDelete
+        ) { marker in
+            Button("Löschen", role: .destructive) {
+                Task { await store.remove(marker) }
+                markerToDelete = nil
+            }
+            Button("Abbrechen", role: .cancel) { markerToDelete = nil }
+        } message: { marker in
+            Text("Takt \(marker.startBar)–\(marker.endBar) · \(marker.reason.label) wird unwiderruflich gelöscht.")
+        }
     }
 
     private func markerRow(_ marker: PracticeMarker) -> some View {
@@ -400,7 +475,7 @@ private struct SongGridView: View {
             }
             .buttonStyle(.borderless)
             .disabled(!vm.hasTiming || !player.hasTrack)
-            Button(role: .destructive) { Task { await store.remove(marker) } } label: {
+            Button(role: .destructive) { markerToDelete = marker } label: {
                 Image(systemName: "trash").font(.body)
             }
             .buttonStyle(.borderless)
@@ -411,25 +486,23 @@ private struct SongGridView: View {
 
     // MARK: - Grund-Auswahl
 
+    /// Sinnvolle Vorbelegung des Übe-Modus je Grund.
+    private func defaultMode(for reason: PracticeReason) -> PracticeMode {
+        switch reason {
+        case .shift, .notes:            return .context   // im Zusammenhang
+        case .speed, .precision, .timing: return .loop    // im Loop
+        case .other:                    return .loop
+        }
+    }
+
     private var reasonSheet: some View {
         NavigationStack {
             Form {
-                Section("Übe-Modus") {
-                    Picker("Modus", selection: $pendingMode) {
-                        ForEach(PracticeMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    Text(pendingMode == .loop
-                         ? "Loop der Stelle – erst langsam, dann schneller (Präzision)."
-                         : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
-                        .font(.caption).foregroundColor(.secondary)
-                }
                 Section("Grund") {
                     ForEach(PracticeReason.allCases) { reason in
                         Button {
                             pendingReason = reason
+                            pendingMode = defaultMode(for: reason)   // sinnvoll vorbelegen
                         } label: {
                             HStack {
                                 Label(reason.label, systemImage: reason.systemImage)
@@ -440,6 +513,20 @@ private struct SongGridView: View {
                                 }
                             }
                         }
+                    }
+                }
+                if pendingReason != nil {
+                    Section("Übe-Modus") {
+                        Picker("Modus", selection: $pendingMode) {
+                            ForEach(PracticeMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(pendingMode == .loop
+                             ? "Loop der Stelle – erst langsam, dann schneller (Präzision)."
+                             : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
+                            .font(.caption).foregroundColor(.secondary)
                     }
                 }
             }
@@ -507,7 +594,15 @@ private struct SongGridView: View {
         guard let start = vm.startTime(forBar: startBar) ?? vm.startTime(forBar: marker.startBar) else { return }
         let end = vm.endTime(forBar: endBar) ?? vm.endTime(forBar: marker.endBar) ?? player.duration
         guard end > start else { return }
-        player.playLoop(start: start, end: end, progressive: marker.mode == .loop)
+        // Einzähler + Tempo-/Präzisions-Steuerung (gleicher Baustein wie im Kapitel).
+        speed.stop()
+        speed.configure(player: player, bpm: song.bpm ?? 120)
+        Task { @MainActor in
+            await speed.countIn()
+            player.playLoop(start: start, end: end,
+                            progressive: speed.mode == .autoTime, startRate: speed.startRate)
+            speed.loopStarted()
+        }
     }
 }
 

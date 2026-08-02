@@ -14,8 +14,20 @@ final class SongDetailViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var error: String?
     @Published private(set) var activeIndex: Int?          // Index in `bars`
+    /// Pro Song hinterlegter Grundrhythmus (BD/SD-Positionen in Vierteln).
+    /// nil = kein Muster hinterlegt ⇒ Standard-Backbeat.
+    @Published private(set) var grundrhythmus: (kick: [Double], snare: [Double])?
 
     private var loadedSongID: String?
+
+    /// Zeile aus `song_detail_lighting` mit projiziertem `detail->grundrhythmus`.
+    private struct GrundrhythmusRow: Decodable {
+        let grundrhythmus: GrundrhythmusData?
+    }
+    private struct GrundrhythmusData: Decodable {
+        let kick: [Double]?
+        let snare: [Double]?
+    }
 
     /// Lädt alle Detail-Daten für einen Song (idempotent pro Song-ID).
     /// `force = true` erzwingt ein Neuladen (z. B. nach DB-Änderung).
@@ -30,6 +42,7 @@ final class SongDetailViewModel: ObservableObject {
         fallbackLyrics = nil
         isSynced = false
         activeIndex = nil
+        grundrhythmus = nil
         defer { isLoading = false }
 
         let idFilter = URLQueryItem(name: "song_id", value: "eq.\(songID)")
@@ -46,19 +59,36 @@ final class SongDetailViewModel: ObservableObject {
                 path: "song_lyrics_public",
                 query: [idFilter, URLQueryItem(name: "select", value: "lyrics_raw,total_bars")]
             )
+            async let grooveReq: [GrundrhythmusRow] = SupabaseConfig.get(
+                path: "song_detail_lighting",
+                query: [idFilter,
+                        URLQueryItem(name: "select", value: "grundrhythmus:detail->grundrhythmus")]
+            )
 
             let timeline = try await timelineReq
             let partList = (try? await partsReq) ?? []          // best effort
             let lyrics = (try? await lyricsReq) ?? []
+            let groove = (try? await grooveReq) ?? []
 
             bars = timeline
             parts = partList
             fallbackLyrics = lyrics.first?.lyricsRaw
             totalBars = lyrics.first?.totalBars ?? timeline.last?.barNum
             isSynced = !timeline.isEmpty
+            grundrhythmus = Self.parseGroove(groove.first?.grundrhythmus)
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Wandelt die DB-Rohdaten in ein Muster um. Liefert nil, wenn kein Muster
+    /// hinterlegt ist (null) oder BD und SD beide leer sind ⇒ Standard-Backbeat.
+    private static func parseGroove(_ data: GrundrhythmusData?) -> (kick: [Double], snare: [Double])? {
+        guard let data else { return nil }
+        let kick = data.kick ?? []
+        let snare = data.snare ?? []
+        if kick.isEmpty && snare.isEmpty { return nil }
+        return (kick, snare)
     }
 
     /// Aktiver Takt = letzter Takt mit `t_start <= currentTime` (binäre Suche).
