@@ -82,12 +82,6 @@ struct ContentView: View {
                         timerBar
                     }
 
-                    // Feedback overlay
-                    if let feedback = viewModel.feedback {
-                        feedbackView(feedback)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-
                     // Game complete
                     if viewModel.gameComplete {
                         gameCompleteView
@@ -98,6 +92,13 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.3), value: viewModel.isPlaying)
             .animation(.easeInOut(duration: 0.3), value: viewModel.feedback)
             .animation(.easeInOut(duration: 0.3), value: viewModel.levelFeedback)
+
+            // Großes, zentriertes Feedback (Korrektur deutlich sichtbar).
+            if let feedback = viewModel.feedback {
+                feedbackView(feedback)
+                    .transition(.scale.combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
 
             // Confetti overlay
             if viewModel.showConfetti {
@@ -135,6 +136,7 @@ struct ContentView: View {
             }
         }
         .background(Color(.systemBackground))
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.feedback)
     }
 
     // MARK: - Subviews
@@ -159,28 +161,43 @@ struct ContentView: View {
         return .red
     }
 
+    @ViewBuilder
     private func feedbackView(_ feedback: AnswerFeedback) -> some View {
         let correct = feedback == .correct
         // Helles, gut unterscheidbares Rot (farbenblind-freundlicher) bzw. Grün.
+        // Zusätzlich zur Farbe unterschiedliche Form (Haken vs. Kreuz) → farbenblind-sicher.
         let color: Color = correct
             ? Color(red: 0.15, green: 0.72, blue: 0.40)
             : Color(red: 1.0, green: 0.32, blue: 0.30)
-        return HStack(spacing: 12) {
+        VStack(spacing: 12) {
             Image(systemName: correct ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 40))
-            Text(correct ? "Richtig!" : "Falsch – es war \(viewModel.currentNote.rawValue)")
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
+                .font(.system(size: 76, weight: .bold))
+            if correct {
+                Text("Richtig!")
+                    .font(.system(size: 44, weight: .heavy))
+            } else {
+                Text("Falsch")
+                    .font(.system(size: 34, weight: .heavy))
+                Text("Richtig wäre")
+                    .font(.title3)
+                    .foregroundColor(.primary.opacity(0.7))
+                Text(viewModel.currentNote.rawValue)
+                    .font(.system(size: 104, weight: .black, design: .monospaced))
+            }
         }
         .foregroundColor(color)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .padding(.horizontal, 16)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 48)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(color.opacity(0.18))
+            RoundedRectangle(cornerRadius: 26)
+                .fill(.ultraThinMaterial)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 26)
+                .stroke(color, lineWidth: 3)
+        )
+        .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
+        .padding(40)
     }
 
     private var gameCompleteView: some View {
