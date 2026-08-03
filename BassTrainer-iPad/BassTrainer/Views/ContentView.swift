@@ -6,6 +6,8 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+          VStack(spacing: 0) {
+            topBar
             // Main content
             ScrollView {
                 VStack(spacing: 12) {
@@ -77,11 +79,6 @@ struct ContentView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
-                    // Timer bar when playing
-                    if viewModel.isPlaying && viewModel.feedback == nil {
-                        timerBar
-                    }
-
                     // Game complete
                     if viewModel.gameComplete {
                         gameCompleteView
@@ -92,6 +89,7 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.3), value: viewModel.isPlaying)
             .animation(.easeInOut(duration: 0.3), value: viewModel.feedback)
             .animation(.easeInOut(duration: 0.3), value: viewModel.levelFeedback)
+          }
 
             // Großes, zentriertes Feedback (Korrektur deutlich sichtbar).
             if let feedback = viewModel.feedback {
@@ -116,30 +114,35 @@ struct ContentView: View {
                 .ignoresSafeArea()
             }
 
-            // Back to main menu
-            VStack {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("Menü", systemImage: "chevron.left")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    .padding(.top, 8)
-                    .padding(.leading, 16)
-                    Spacer()
-                }
-                Spacer()
-            }
         }
         .background(Color(.systemBackground))
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.feedback)
     }
 
     // MARK: - Subviews
+
+    /// Fest oben verankert: Menü + Timer sind so immer sichtbar (kein Scrollen).
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Label("Menü", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            if viewModel.isPlaying && viewModel.feedback == nil {
+                timerBar
+            } else {
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
 
     private var timerBar: some View {
         VStack(spacing: 4) {
