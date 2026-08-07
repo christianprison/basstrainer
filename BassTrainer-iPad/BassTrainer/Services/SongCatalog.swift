@@ -97,7 +97,9 @@ final class SongCatalog: ObservableObject {
         self.source = source
     }
 
-    func load() async {
+    /// Lädt die Songs. `bandID` filtert Setlist/Repertoire nach Band
+    /// (nötig, seit `setlist_public` mehrere Bands gemischt liefert).
+    func load(bandID: String? = nil) async {
         guard SupabaseConfig.isConfigured else {
             error = "Supabase-Zugang noch nicht konfiguriert (anon-Key fehlt)."
             return
@@ -105,6 +107,14 @@ final class SongCatalog: ObservableObject {
         isLoading = true
         error = nil
         defer { isLoading = false }
+
+        // Explizite Band-ID hat Vorrang; sonst die global gewählte Band (AppStorage).
+        let effectiveBand = (bandID?.isEmpty == false)
+            ? bandID
+            : UserDefaults.standard.string(forKey: "selectedBandID")
+        let bandFilter: [URLQueryItem] = (effectiveBand?.isEmpty == false)
+            ? [URLQueryItem(name: "band_id", value: "eq.\(effectiveBand!)")]
+            : []
 
         do {
             // 1) Audio-Assets einmal holen → Play-along-Pfad + bekannte Takte je Song.
@@ -139,7 +149,7 @@ final class SongCatalog: ObservableObject {
                     query: [
                         URLQueryItem(name: "select", value: "pos,song_id,name,artist,bpm,music_key,duration_sec"),
                         URLQueryItem(name: "order", value: "pos.asc"),
-                    ]
+                    ] + bandFilter
                 )
                 songs = rows.map { r in
                     CatalogSong(id: r.songId, pos: r.pos, name: r.name, artist: r.artist,
@@ -153,7 +163,7 @@ final class SongCatalog: ObservableObject {
                     query: [
                         URLQueryItem(name: "select", value: "id,name,artist,bpm,music_key,duration_sec"),
                         URLQueryItem(name: "order", value: "name.asc"),
-                    ]
+                    ] + bandFilter
                 )
                 songs = rows.map { r in
                     CatalogSong(id: r.id, pos: nil, name: r.name, artist: r.artist,

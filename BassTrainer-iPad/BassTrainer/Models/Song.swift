@@ -1,5 +1,11 @@
 import Foundation
 
+/// Eine Band/ein Projekt (Tabelle `bands`, public read).
+struct Band: Identifiable, Decodable, Hashable {
+    let id: String       // z. B. "the_pact", "stringbreak"
+    let name: String
+}
+
 /// Welche Song-Quelle eine Songs-Übung anzeigt.
 enum SongSource {
     case setlist      // nur aktuelle Setlist (View setlist_public)

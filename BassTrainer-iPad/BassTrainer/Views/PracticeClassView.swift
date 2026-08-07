@@ -138,9 +138,11 @@ final class PracticeClassViewModel: ObservableObject {
     func load() async {
         isLoading = true
         error = nil
-        await catalog.load()
+        await catalog.load()   // band-skopiert über AppStorage
         songsByID = Dictionary(catalog.songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        spots = await store.markers(forReason: reason)
+        // Nur Stellen von Songs der aktiven Band zeigen.
+        let all = await store.markers(forReason: reason)
+        spots = all.filter { songsByID[$0.songID] != nil }
         if spots.isEmpty { error = store.syncError }
         isLoading = false
     }

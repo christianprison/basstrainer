@@ -15,6 +15,8 @@ struct SongsView: View {
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
     @State private var practiceTempo: Double = 1.0   // Playback- & Metronom-Tempo (1.0 = Normal)
+    @State private var bands: [Band] = []
+    @AppStorage("selectedBandID") private var selectedBandID: String = ""
     @Environment(\.dismiss) private var dismiss
 
     private enum MainTab { case lyrics, bars }
@@ -44,13 +46,33 @@ struct SongsView: View {
         }
         .background(Color(.systemBackground))
         .task {
-            if catalog.songs.isEmpty {
-                await catalog.load()
-                if selectedID == nil { selectSong(catalog.songs.first) }
-            }
+            await loadBands()
+            if catalog.songs.isEmpty { await reloadCatalog() }
         }
         .onChange(of: player.progress) { _, t in detail.update(currentTime: t) }
         .onDisappear { player.stop(); metronome.stop() }
+    }
+
+    /// Bands laden und eine gültige Auswahl sicherstellen.
+    private func loadBands() async {
+        if bands.isEmpty {
+            let fetched: [Band] = (try? await SupabaseConfig.get(
+                path: "bands",
+                query: [URLQueryItem(name: "select", value: "id,name")]
+            )) ?? []
+            bands = fetched
+        }
+        if selectedBandID.isEmpty || !bands.contains(where: { $0.id == selectedBandID }) {
+            selectedBandID = bands.first?.id ?? ""
+        }
+    }
+
+    /// Songs der aktiven Band laden und ersten Song wählen.
+    private func reloadCatalog() async {
+        player.stop(); metronome.stop()
+        selectedID = nil
+        await catalog.load(bandID: selectedBandID)
+        selectSong(catalog.songs.first)
     }
 
     // MARK: - Links: Song-Navigation (20 %)
@@ -63,6 +85,31 @@ struct SongsView: View {
                 Spacer()
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
+            if bands.count > 1 {
+                Divider()
+                Menu {
+                    ForEach(bands) { b in
+                        Button {
+                            guard b.id != selectedBandID else { return }
+                            selectedBandID = b.id
+                            Task { await reloadCatalog() }
+                        } label: {
+                            Label(b.name, systemImage: b.id == selectedBandID ? "checkmark" : "person.3")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.3.fill").foregroundColor(.accentColor)
+                        Text(bands.first { $0.id == selectedBandID }?.name ?? "Band")
+                            .font(.subheadline).fontWeight(.semibold).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
             Divider()
 
             if catalog.isLoading {
