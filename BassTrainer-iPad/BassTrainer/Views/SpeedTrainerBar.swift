@@ -39,8 +39,6 @@ final class SpeedTrainer: ObservableObject {
         var tight: Bool { abs(deviation) < 0.15 }
     }
 
-    let startRate: Float = 0.6   // Anfangstempo der Speed-Übung
-
     private let audio = AudioEngine()
     private let listener = ListeningEngine()
     private weak var player: SongPlayer?
@@ -56,9 +54,9 @@ final class SpeedTrainer: ObservableObject {
     var tempoPercent: Int { Int(((player?.loopRate ?? 1) * 100).rounded()) }
 
     /// Vier Klicks im Start-Tempo als Einzähler (vor dem Loop-Start aufrufen).
-    func countIn() async {
+    func countIn(rate: Float) async {
         guard bpm > 0 else { return }
-        let interval = (60.0 / Double(bpm)) / Double(startRate)
+        let interval = (60.0 / Double(bpm)) / Double(rate)
         for beat in 1...4 {
             countInBeat = beat
             audio.playMetronomeClick(accent: beat == 1)

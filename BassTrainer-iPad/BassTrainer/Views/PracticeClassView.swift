@@ -80,17 +80,12 @@ struct PracticeClassView: View {
             }
             if vm.loadingSpot { ProgressView() }
 
-            if vm.isSpeed {
-                SpeedTrainerBar(trainer: vm.speed, isLooping: vm.player.isLooping)
-            }
+            SpeedTrainerBar(trainer: vm.speed, isLooping: vm.player.isLooping)
 
             HStack(spacing: 16) {
                 Button { vm.previous() } label: { Image(systemName: "backward.fill").font(.title3) }
                     .disabled(!vm.hasPrev)
                 Spacer()
-                if !vm.isSpeed && vm.player.isLooping && vm.player.loopRate < 1.0 {
-                    Text("\(Int(vm.player.loopRate * 100)) %").font(.caption).monospacedDigit().foregroundColor(.secondary)
-                }
                 Button { vm.stopLoop() } label: {
                     Label("Loop aus", systemImage: "stop.circle.fill").font(.headline)
                 }
@@ -125,8 +120,6 @@ final class PracticeClassViewModel: ObservableObject {
     private let detail = SongDetailViewModel()
     private var songsByID: [String: CatalogSong] = [:]
     private var cancellables = Set<AnyCancellable>()
-
-    var isSpeed: Bool { reason == .speed }
 
     init(reason: PracticeReason) {
         self.reason = reason
@@ -164,20 +157,23 @@ final class PracticeClassViewModel: ObservableObject {
             player.load(path: songsByID[m.songID]?.playalongPath)
             speed.configure(player: player, bpm: songsByID[m.songID]?.bpm ?? 120)
             loadingSpot = false
-            if isSpeed { await speed.countIn() }
-            loopCurrent(m)
-            if isSpeed, player.isLooping { speed.loopStarted() }
+            // „Im Zusammenhang“ startet auf Originaltempo, reiner Loop langsam.
+            let startRate: Float = m.mode == .context ? 1.0 : 0.6
+            await speed.countIn(rate: startRate)   // Einzähler vor jedem Loop
+            loopCurrent(m, startRate: startRate)
+            if player.isLooping { speed.loopStarted() }
         }
     }
 
     func next() { if let i = currentIndex, i + 1 < spots.count { play(spots[i + 1]) } }
     func previous() { if let i = currentIndex, i > 0 { play(spots[i - 1]) } }
 
-    /// Gleiche Loop-Logik wie im Takte-Raster; Speed-Stellen starten langsam.
-    private func loopCurrent(_ m: PracticeMarker) {
+    /// Gleiche Loop-Logik wie im Takte-Raster.
+    private func loopCurrent(_ m: PracticeMarker, startRate: Float) {
         let combo = m.mode == .context && m.reason == .shift
-        let leadBars = combo ? 8 : (m.mode == .context ? 2 : 0)
-        let trailBars = combo ? 4 : 0
+        let context = m.mode == .context
+        let leadBars = combo ? 8 : (context ? 2 : 0)
+        let trailBars = combo ? 4 : (context ? 2 : 0)   // im Zusammenhang min. 2 Takte Auslauf
         let startBar = max(1, m.startBar - leadBars)
         let endBar = m.endBar + trailBars
         guard let start = detail.startTime(forBar: startBar) ?? detail.startTime(forBar: m.startBar) else {
@@ -186,11 +182,7 @@ final class PracticeClassViewModel: ObservableObject {
         }
         let end = detail.endTime(forBar: endBar) ?? detail.endTime(forBar: m.endBar) ?? player.duration
         guard end > start else { return }
-        if isSpeed {
-            player.playLoop(start: start, end: end, progressive: speed.mode == .autoTime, startRate: speed.startRate)
-        } else {
-            player.playLoop(start: start, end: end, progressive: m.mode == .loop)
-        }
+        player.playLoop(start: start, end: end, progressive: speed.mode == .autoTime, startRate: startRate)
     }
 
     func stopLoop() {

@@ -128,7 +128,18 @@ struct SongsView: View {
                 HStack(spacing: 12) {
                     if let artist = selectedSong?.artist { Text(artist) }
                     if let bpm = selectedSong?.bpm { Label("\(bpm) BPM", systemImage: "metronome") }
-                    if let key = selectedSong?.musicKey { Label(key, systemImage: "music.note") }
+                    if let key = selectedSong?.musicKey, !key.isEmpty {
+                        HStack(spacing: 4) {
+                            Text("𝄞").font(.title3)          // Violinschlüssel
+                            Text(key)
+                        }
+                    }
+                    if let song = selectedSong, song.playedWithPick {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrowtriangle.down.fill").foregroundColor(.red)
+                            if let ann = song.pickAnnotation { Text(ann) }
+                        }
+                    }
                 }
                 .font(.caption).foregroundColor(.secondary)
             }
@@ -584,10 +595,11 @@ private struct SongGridView: View {
 
     private func loop(_ marker: PracticeMarker) {
         // Im Zusammenhang + Lagenwechsel: 8 Takte Anlauf, 4 Takte Auslauf.
-        // Sonst im Zusammenhang: 2 Takte Anlauf. Reiner Loop: exakt die Stelle.
+        // Sonst im Zusammenhang: 2 Takte Anlauf + min. 2 Takte Auslauf. Reiner Loop: exakt die Stelle.
         let combo = marker.mode == .context && marker.reason == .shift
-        let leadBars = combo ? 8 : (marker.mode == .context ? 2 : 0)
-        let trailBars = combo ? 4 : 0
+        let context = marker.mode == .context
+        let leadBars = combo ? 8 : (context ? 2 : 0)
+        let trailBars = combo ? 4 : (context ? 2 : 0)
 
         let startBar = max(1, marker.startBar - leadBars)
         let endBar = marker.endBar + trailBars
@@ -595,12 +607,14 @@ private struct SongGridView: View {
         let end = vm.endTime(forBar: endBar) ?? vm.endTime(forBar: marker.endBar) ?? player.duration
         guard end > start else { return }
         // Einzähler + Tempo-/Präzisions-Steuerung (gleicher Baustein wie im Kapitel).
+        // „Im Zusammenhang“ startet auf Originaltempo (100 %), reiner Loop langsam (60 %).
+        let startRate: Float = context ? 1.0 : 0.6
         speed.stop()
         speed.configure(player: player, bpm: song.bpm ?? 120)
         Task { @MainActor in
-            await speed.countIn()
+            await speed.countIn(rate: startRate)
             player.playLoop(start: start, end: end,
-                            progressive: speed.mode == .autoTime, startRate: speed.startRate)
+                            progressive: speed.mode == .autoTime, startRate: startRate)
             speed.loopStarted()
         }
     }

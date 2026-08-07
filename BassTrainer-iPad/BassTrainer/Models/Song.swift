@@ -24,8 +24,19 @@ struct CatalogSong: Identifiable {
     let durationSec: Int?
     var playalongPath: String?
     var snippetBars: [Int]  // bekannte Taktnummern (aus per-Takt-Snippets), sortiert
+    var pick: String?       // aus songs.pick — enthält "🔻" wenn mit Plektrum gespielt
 
     var hasPlayalong: Bool { playalongPath != nil }
+
+    /// Wird das Stück mit Pick/Plektrum gespielt? (Datenfeld enthält dann „🔻".)
+    var playedWithPick: Bool { (pick ?? "").contains("🔻") }
+
+    /// Zusatztext im pick-Feld ohne das Dreieck (z. B. „Harp C"), falls vorhanden.
+    var pickAnnotation: String? {
+        let rest = (pick ?? "").replacingOccurrences(of: "🔻", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return rest.isEmpty ? nil : rest
+    }
 }
 
 // MARK: - PostgREST DTOs
@@ -62,6 +73,12 @@ struct SongRow: Decodable {
         case musicKey = "music_key"
         case durationSec = "duration_sec"
     }
+}
+
+/// Zeile aus `songs` – nur für das Pick-Kennzeichen (in `setlist_public` fehlt es).
+struct PickRow: Decodable {
+    let id: String
+    let pick: String?
 }
 
 /// Eintrag aus `audio_assets`.

@@ -124,6 +124,13 @@ final class SongCatalog: ObservableObject {
             }
             for key in bars.keys { bars[key]?.sort() }
 
+            // 1b) Pick-Kennzeichen je Song (fehlt in setlist_public → aus songs holen).
+            let pickRows: [PickRow] = (try? await fetch(
+                path: "songs",
+                query: [URLQueryItem(name: "select", value: "id,pick")]
+            )) ?? []
+            let pickByID = Dictionary(pickRows.map { ($0.id, $0.pick) }, uniquingKeysWith: { a, _ in a })
+
             // 2) Song-Liste je nach Quelle.
             switch source {
             case .setlist:
@@ -137,7 +144,8 @@ final class SongCatalog: ObservableObject {
                 songs = rows.map { r in
                     CatalogSong(id: r.songId, pos: r.pos, name: r.name, artist: r.artist,
                                 bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
-                                playalongPath: playalong[r.songId], snippetBars: bars[r.songId] ?? [])
+                                playalongPath: playalong[r.songId], snippetBars: bars[r.songId] ?? [],
+                                pick: pickByID[r.songId] ?? nil)
                 }
             case .repertoire:
                 let rows: [SongRow] = try await fetch(
@@ -150,7 +158,8 @@ final class SongCatalog: ObservableObject {
                 songs = rows.map { r in
                     CatalogSong(id: r.id, pos: nil, name: r.name, artist: r.artist,
                                 bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
-                                playalongPath: playalong[r.id], snippetBars: bars[r.id] ?? [])
+                                playalongPath: playalong[r.id], snippetBars: bars[r.id] ?? [],
+                                pick: pickByID[r.id] ?? nil)
                 }
             }
         } catch {
