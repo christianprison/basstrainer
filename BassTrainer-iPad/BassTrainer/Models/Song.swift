@@ -81,6 +81,18 @@ struct SongRow: Decodable {
     }
 }
 
+/// Ein Song-Tipp: Text-Hinweis und/oder ein saitiger Bass-Tab (ASCII-Zeilen,
+/// eine Zeile je Saite, z. B. "G|----" / "D|----" / "A|-3-5" / "E|-3--").
+/// Quelle: `song_detail_lighting.detail.tips` (Array).
+struct SongTip: Decodable, Identifiable {
+    let title: String?
+    let text: String?
+    let tab: [String]?
+
+    var id: String { (title ?? "") + (text ?? "") + (tab?.joined() ?? "") }
+    var hasContent: Bool { (text?.isEmpty == false) || (tab?.isEmpty == false) }
+}
+
 /// Zeile aus `songs` – nur für das Pick-Kennzeichen (in `setlist_public` fehlt es).
 struct PickRow: Decodable {
     let id: String

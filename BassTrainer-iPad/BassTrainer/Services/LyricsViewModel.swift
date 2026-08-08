@@ -17,12 +17,15 @@ final class SongDetailViewModel: ObservableObject {
     /// Pro Song hinterlegter Grundrhythmus (BD/SD-Positionen in Vierteln).
     /// nil = kein Muster hinterlegt ⇒ Standard-Backbeat.
     @Published private(set) var grundrhythmus: (kick: [Double], snare: [Double])?
+    /// Pro Song hinterlegte Tipps (Text + saitige Bass-Tabs).
+    @Published private(set) var tips: [SongTip] = []
 
     private var loadedSongID: String?
 
-    /// Zeile aus `song_detail_lighting` mit projiziertem `detail->grundrhythmus`.
+    /// Zeile aus `song_detail_lighting` mit projiziertem `detail->grundrhythmus` + `detail->tips`.
     private struct GrundrhythmusRow: Decodable {
         let grundrhythmus: GrundrhythmusData?
+        let tips: [SongTip]?
     }
     private struct GrundrhythmusData: Decodable {
         let kick: [Double]?
@@ -43,6 +46,7 @@ final class SongDetailViewModel: ObservableObject {
         isSynced = false
         activeIndex = nil
         grundrhythmus = nil
+        tips = []
         defer { isLoading = false }
 
         let idFilter = URLQueryItem(name: "song_id", value: "eq.\(songID)")
@@ -62,7 +66,7 @@ final class SongDetailViewModel: ObservableObject {
             async let grooveReq: [GrundrhythmusRow] = SupabaseConfig.get(
                 path: "song_detail_lighting",
                 query: [idFilter,
-                        URLQueryItem(name: "select", value: "grundrhythmus:detail->grundrhythmus")]
+                        URLQueryItem(name: "select", value: "grundrhythmus:detail->grundrhythmus,tips:detail->tips")]
             )
 
             let timeline = try await timelineReq
@@ -76,6 +80,7 @@ final class SongDetailViewModel: ObservableObject {
             totalBars = lyrics.first?.totalBars ?? timeline.last?.barNum
             isSynced = !timeline.isEmpty
             grundrhythmus = Self.parseGroove(groove.first?.grundrhythmus)
+            tips = (groove.first?.tips ?? []).filter { $0.hasContent }
         } catch {
             self.error = error.localizedDescription
         }
