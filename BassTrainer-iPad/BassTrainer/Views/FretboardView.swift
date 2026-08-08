@@ -4,9 +4,12 @@ struct FretboardView: View {
     let currentPosition: FretPosition?
     let isPlaying: Bool
     let levelColor: Color
-    /// Zusätzliche, dauerhaft beschriftete Marker (Orientierungs-Übung).
+    /// Zusätzliche, dauerhaft beschriftete Marker (Orientierungs-/Pentatonik-Übung).
     var markers: [FretPosition] = []
     var markerColor: Color = .accentColor
+    /// Grundton-Marker in eigener Farbe (über den normalen Markern gezeichnet).
+    var rootMarkers: [FretPosition] = []
+    var rootColor: Color = Color(red: 0.90, green: 0.20, blue: 0.55)
 
     // Calibrated positions reference width (from web version)
     private static let referenceWidth: CGFloat = 1883.0
@@ -111,6 +114,10 @@ struct FretboardView: View {
                 ForEach(Array(markers.enumerated()), id: \.offset) { _, pos in
                     let point = notePosition(position: pos, viewWidth: renderedWidth, viewHeight: renderedHeight)
                     FretMarkerLabel(text: pos.note.rawValue, point: point, color: markerColor, diameter: dia)
+                }
+                ForEach(Array(rootMarkers.enumerated()), id: \.offset) { _, pos in
+                    let point = notePosition(position: pos, viewWidth: renderedWidth, viewHeight: renderedHeight)
+                    FretMarkerLabel(text: pos.note.rawValue, point: point, color: rootColor, diameter: dia)
                 }
             }
             .frame(width: size.width, height: size.height)

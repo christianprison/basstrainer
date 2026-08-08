@@ -5,6 +5,7 @@ enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
     case orientation        // Orientierung: Töne auf dem Hals (Quinten/Quarten, Saite, Ton finden)
     case pickOctaves        // Plektrum-Übung: Oktaven zum Klick (+ Dead Notes)
+    case pentatonic         // Pentatonic Shapes (Dur/Moll, 5 Lagen)
     case tuner              // Pitch-Detection / Noten-Erkennung (TunerView)
     case precisionOctaves   // Oktaven nach Metronom
     case songsList          // Aktuelle Setlist (setlist_public)
@@ -64,7 +65,7 @@ enum MenuConfig {
             label: "Improvisation",
             description: "Skalen & freies Spiel",
             children: [
-                MenuItem(id: "pentatonic-shapes", label: "Pentatonic Shapes", description: "Pentatonik-Patterns über das Griffbrett", mode: .placeholder),
+                MenuItem(id: "pentatonic-shapes", label: "Pentatonic Shapes", description: "Dur-/Moll-Pentatonik auf dem Griffbrett, 5 Lagen", mode: .pentatonic),
             ]
         ),
         MenuItem(
