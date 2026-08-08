@@ -6,14 +6,17 @@ struct NoteButtonsView: View {
     let onNoteTapped: (NoteName) -> Void
 
     private let buttonSize: CGFloat = 56
-    private let containerHeight: CGFloat = 300
+    // Höhe um 80 reduziert (war 300) und shiftY im gleichen Maß (war 90 → 10):
+    // der Drehpunkt bleibt dadurch identisch, die Buttons stehen unverändert,
+    // nur der ungenutzte Leerraum unten entfällt → kein Scrollbalken mehr.
+    private let containerHeight: CGFloat = 220
     // Ellipse statt Kreis: breiter als hoch → untere Töne liegen weiter innen.
     private let outerRX: CGFloat = 185       // Naturtöne, horizontal
     private let outerRY: CGFloat = 140       // Naturtöne, vertikal
     private let innerRX: CGFloat = 104       // Halbtöne, horizontal
     private let innerRY: CGFloat = 74        // Halbtöne, vertikal
     private let shiftX: CGFloat = 74         // weiter zur Mitte
-    private let shiftY: CGFloat = 90         // weiter nach oben
+    private let shiftY: CGFloat = 10         // mit containerHeight reduziert (Drehpunkt bleibt gleich)
 
     var body: some View {
         VStack(spacing: 8) {

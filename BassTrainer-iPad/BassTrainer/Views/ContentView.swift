@@ -89,6 +89,7 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.3), value: viewModel.isPlaying)
             .animation(.easeInOut(duration: 0.3), value: viewModel.feedback)
             .animation(.easeInOut(duration: 0.3), value: viewModel.levelFeedback)
+            .scrollBounceBehavior(.basedOnSize)   // kein Wischen, wenn der Inhalt passt
           }
 
             // Großes, zentriertes Feedback (Korrektur deutlich sichtbar).
