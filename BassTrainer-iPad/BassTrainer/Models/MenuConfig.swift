@@ -3,6 +3,7 @@ import Foundation
 /// Welche Ansicht ein Menü-Blatt startet.
 enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
+    case orientation        // Orientierung: Töne auf dem Hals (Quinten/Quarten, Saite, Ton finden)
     case tuner              // Pitch-Detection / Noten-Erkennung (TunerView)
     case precisionOctaves   // Oktaven nach Metronom
     case songsList          // Aktuelle Setlist (setlist_public)
@@ -37,8 +38,7 @@ enum MenuConfig {
             label: "Griffbrett",
             description: "Notenerkennung & Navigation auf dem Griffbrett",
             children: [
-                MenuItem(id: "quinten", label: "Quinten", description: "Quintenzirkel auf dem Griffbrett", mode: .placeholder),
-                MenuItem(id: "quarten", label: "Quarten", description: "Quartensprünge üben", mode: .placeholder),
+                MenuItem(id: "orientierung", label: "Orientierung", description: "Töne auf dem Hals finden: Quinten/Quarten-Reihe, eine Saite, ein Ton über alle Saiten", mode: .orientation),
                 MenuItem(id: "griffbrett-trainer", label: "Griffbrett", description: "Das klassische BassTrainer-Training", mode: .fretboard),
                 MenuItem(id: "uebung-lagenwechsel", label: "Lagenwechsel", description: "Alle markierten Lagenwechsel durchüben", mode: .practiceClass, practiceReason: .shift),
                 MenuItem(id: "uebung-tonsicherheit", label: "Tonsicherheit", description: "Alle markierten Tonsicherheits-Stellen durchüben", mode: .practiceClass, practiceReason: .notes),

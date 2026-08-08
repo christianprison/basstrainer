@@ -66,6 +66,8 @@ private struct MenuLevelView: View {
         switch item.mode {
         case .fretboard:
             ContentView()
+        case .orientation:
+            OrientationView()
         case .tuner:
             TunerView()
         case .precisionOctaves:

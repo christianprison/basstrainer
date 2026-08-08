@@ -4,6 +4,9 @@ struct FretboardView: View {
     let currentPosition: FretPosition?
     let isPlaying: Bool
     let levelColor: Color
+    /// Zusätzliche, dauerhaft beschriftete Marker (Orientierungs-Übung).
+    var markers: [FretPosition] = []
+    var markerColor: Color = .accentColor
 
     // Calibrated positions reference width (from web version)
     private static let referenceWidth: CGFloat = 1883.0
@@ -102,6 +105,13 @@ struct FretboardView: View {
                     )
                     TargetDotView(point: point, color: levelColor)
                 }
+
+                // Beschriftete Marker (Orientierung): alle übergebenen Positionen.
+                let dia = min(34, max(18, renderedHeight * 0.5))
+                ForEach(Array(markers.enumerated()), id: \.offset) { _, pos in
+                    let point = notePosition(position: pos, viewWidth: renderedWidth, viewHeight: renderedHeight)
+                    FretMarkerLabel(text: pos.note.rawValue, point: point, color: markerColor, diameter: dia)
+                }
             }
             .frame(width: size.width, height: size.height)
             .clipped()
@@ -156,6 +166,26 @@ struct FretboardView: View {
         let y = (lower.y + (upper.y - lower.y) * ratio) * scale
 
         return CGPoint(x: x, y: y)
+    }
+}
+
+// MARK: - Beschrifteter Marker
+
+private struct FretMarkerLabel: View {
+    let text: String
+    let point: CGPoint
+    let color: Color
+    let diameter: CGFloat
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: diameter * 0.5, weight: .bold, design: .rounded))
+            .foregroundColor(.white)
+            .frame(width: diameter, height: diameter)
+            .background(Circle().fill(color))
+            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+            .shadow(color: .black.opacity(0.35), radius: 2)
+            .position(point)
     }
 }
 
