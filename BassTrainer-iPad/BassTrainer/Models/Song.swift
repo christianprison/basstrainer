@@ -144,6 +144,18 @@ struct PickRow: Decodable {
     let pick: String?
 }
 
+/// Referenz-Audiopfad je Song aus `song_detail_lighting.detail.audio_ref`
+/// (maßgeblich, wenn ein Song mehrere Full-Song-MP3s hat).
+struct AudioRefRow: Decodable {
+    let songId: String
+    let audioRef: String?
+
+    enum CodingKeys: String, CodingKey {
+        case songId = "song_id"
+        case audioRef = "audio_ref"
+    }
+}
+
 /// Eintrag aus `audio_assets`.
 struct AudioAssetRow: Decodable {
     let songId: String

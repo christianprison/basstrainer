@@ -141,6 +141,18 @@ final class SongCatalog: ObservableObject {
             )) ?? []
             let pickByID = Dictionary(pickRows.map { ($0.id, $0.pick) }, uniquingKeysWith: { a, _ in a })
 
+            // 1c) Maßgebliche Referenz-Audiodatei je Song (falls mehrere MP3s existieren).
+            let refRows: [AudioRefRow] = (try? await fetch(
+                path: "song_detail_lighting",
+                query: [URLQueryItem(name: "select", value: "song_id,audio_ref:detail->>audio_ref")]
+            )) ?? []
+            let refByID = Dictionary(
+                refRows.compactMap { r in r.audioRef.map { (r.songId, $0) } },
+                uniquingKeysWith: { a, _ in a }
+            )
+            // audio_ref hat Vorrang vor dem ersten audio_assets-Eintrag.
+            func playalongFor(_ id: String) -> String? { refByID[id] ?? playalong[id] }
+
             // 2) Song-Liste je nach Quelle.
             switch source {
             case .setlist:
@@ -154,7 +166,7 @@ final class SongCatalog: ObservableObject {
                 songs = rows.map { r in
                     CatalogSong(id: r.songId, pos: r.pos, name: r.name, artist: r.artist,
                                 bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
-                                playalongPath: playalong[r.songId], snippetBars: bars[r.songId] ?? [],
+                                playalongPath: playalongFor(r.songId), snippetBars: bars[r.songId] ?? [],
                                 pick: pickByID[r.songId] ?? nil)
                 }
             case .repertoire:
@@ -168,7 +180,7 @@ final class SongCatalog: ObservableObject {
                 songs = rows.map { r in
                     CatalogSong(id: r.id, pos: nil, name: r.name, artist: r.artist,
                                 bpm: r.bpm, musicKey: r.musicKey, durationSec: r.durationSec,
-                                playalongPath: playalong[r.id], snippetBars: bars[r.id] ?? [],
+                                playalongPath: playalongFor(r.id), snippetBars: bars[r.id] ?? [],
                                 pick: pickByID[r.id] ?? nil)
                 }
             }
