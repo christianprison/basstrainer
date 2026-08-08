@@ -4,6 +4,7 @@ import Foundation
 enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
     case orientation        // Orientierung: Töne auf dem Hals (Quinten/Quarten, Saite, Ton finden)
+    case pickOctaves        // Plektrum-Übung: Oktaven zum Klick (+ Dead Notes)
     case tuner              // Pitch-Detection / Noten-Erkennung (TunerView)
     case precisionOctaves   // Oktaven nach Metronom
     case songsList          // Aktuelle Setlist (setlist_public)
@@ -51,7 +52,7 @@ enum MenuConfig {
             description: "Anschlag & Timing",
             children: [
                 MenuItem(id: "oktaven", label: "Oktaven", description: "Oktaven nach Metronom – progressives Tempo", mode: .precisionOctaves),
-                MenuItem(id: "pick", label: "Pick", description: "Präzision mit Plektrum", mode: .placeholder),
+                MenuItem(id: "pick", label: "Pick", description: "Oktaven mit Plektrum zum Klick (auch als Dead Notes)", mode: .pickOctaves),
                 MenuItem(id: "fingered", label: "Fingered", description: "Präzision mit Fingern", mode: .placeholder),
                 MenuItem(id: "uebung-geschwindigkeit", label: "Geschwindigkeit", description: "Alle markierten Geschwindigkeits-Stellen durchüben", mode: .practiceClass, practiceReason: .speed),
                 MenuItem(id: "uebung-praezision", label: "Präzision", description: "Alle markierten Präzisions-Stellen durchüben", mode: .practiceClass, practiceReason: .precision),

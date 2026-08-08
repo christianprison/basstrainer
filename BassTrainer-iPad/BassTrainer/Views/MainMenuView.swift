@@ -68,6 +68,8 @@ private struct MenuLevelView: View {
             ContentView()
         case .orientation:
             OrientationView()
+        case .pickOctaves:
+            PickOctavesView()
         case .tuner:
             TunerView()
         case .precisionOctaves:
