@@ -93,6 +93,51 @@ struct SongTip: Decodable, Identifiable {
     var hasContent: Bool { (text?.isEmpty == false) || (tab?.isEmpty == false) }
 }
 
+/// Persönlicher, in der App editierbarer Song-Tipp (Tabelle `song_tips`,
+/// privat pro User via RLS). Kann Text und/oder saitigen Bass-Tab enthalten.
+struct PersonalTip: Identifiable, Codable, Equatable {
+    var id = UUID()
+    let songID: String
+    var title: String?
+    var text: String?
+    var tab: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, text, tab
+        case songID = "song_id"
+    }
+
+    init(id: UUID = UUID(), songID: String, title: String? = nil, text: String? = nil, tab: [String]? = nil) {
+        self.id = id; self.songID = songID; self.title = title; self.text = text; self.tab = tab
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        songID = try c.decode(String.self, forKey: .songID)
+        title = try? c.decode(String.self, forKey: .title)
+        text = try? c.decode(String.self, forKey: .text)
+        tab = try? c.decode([String].self, forKey: .tab)
+    }
+
+    /// Für die einheitliche Anzeige neben zentralen Tipps.
+    var asSongTip: SongTip { SongTip(title: title, text: text, tab: tab) }
+    var hasContent: Bool { (text?.isEmpty == false) || (tab?.isEmpty == false) || (title?.isEmpty == false) }
+}
+
+struct PersonalTipInsert: Encodable {
+    let song_id: String
+    let title: String?
+    let text: String?
+    let tab: [String]?
+}
+
+struct PersonalTipUpdate: Encodable {
+    let title: String?
+    let text: String?
+    let tab: [String]?
+}
+
 /// Zeile aus `songs` – nur für das Pick-Kennzeichen (in `setlist_public` fehlt es).
 struct PickRow: Decodable {
     let id: String

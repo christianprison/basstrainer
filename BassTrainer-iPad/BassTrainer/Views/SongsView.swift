@@ -12,6 +12,7 @@ struct SongsView: View {
     @StateObject private var metronome = Metronome()
     @StateObject private var detail = SongDetailViewModel()
     @StateObject private var markerStore = PracticeMarkerStore()
+    @StateObject private var tipStore = SongTipStore()
     @State private var selectedID: String?
     @State private var mainTab: MainTab = .lyrics
     @State private var practiceTempo: Double = 1.0   // Playback- & Metronom-Tempo (1.0 = Normal)
@@ -31,6 +32,10 @@ struct SongsView: View {
 
     private var selectedSong: CatalogSong? {
         catalog.songs.first { $0.id == selectedID }
+    }
+
+    private var tipCount: Int {
+        detail.tips.count + (selectedID.map { tipStore.tips(forSong: $0).count } ?? 0)
     }
 
     var body: some View {
@@ -259,7 +264,7 @@ struct SongsView: View {
             Picker("", selection: $mainTab) {
                 Text("Lyrics").tag(MainTab.lyrics)
                 Text("Takte").tag(MainTab.bars)
-                Text(detail.tips.isEmpty ? "Tipps" : "Tipps (\(detail.tips.count))").tag(MainTab.tips)
+                Text(tipCount == 0 ? "Tipps" : "Tipps (\(tipCount))").tag(MainTab.tips)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 24).padding(.vertical, 8)
@@ -269,7 +274,7 @@ struct SongsView: View {
                     switch mainTab {
                     case .lyrics: LyricsView(vm: detail, player: player)
                     case .bars:   SongGridView(song: selectedSong!, vm: detail, player: player, store: markerStore)
-                    case .tips:   TipsView(tips: detail.tips)
+                    case .tips:   TipsView(centralTips: detail.tips, store: tipStore, songID: selectedSong!.id)
                     }
                 } else {
                     Text("Song auswählen").foregroundColor(.secondary)
@@ -288,6 +293,7 @@ struct SongsView: View {
         metronome.stop()
         player.load(path: song.playalongPath)
         Task { await detail.load(songID: song.id) }
+        Task { await tipStore.load(songID: song.id) }
     }
 }
 
