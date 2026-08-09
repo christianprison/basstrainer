@@ -33,6 +33,13 @@ enum PlanTarget: Identifiable, Equatable {
     }
 }
 
+/// Verfügbare Session-Längen.
+enum SessionLength: Int, CaseIterable, Identifiable {
+    case s15 = 15, s30 = 30, s45 = 45, s60 = 60
+    var id: Int { rawValue }
+    var label: String { "\(rawValue)" }
+}
+
 /// Ein Block der Tages-Session.
 struct PlanBlock: Identifiable {
     let id = UUID()
@@ -52,14 +59,15 @@ final class TodayPlanner: ObservableObject {
 
     var totalMinutes: Int { blocks.reduce(0) { $0 + $1.minutes } }
 
-    func build() async {
+    private struct ProblemPick { let reason: PracticeReason; let count: Int; let days: Int? }
+
+    func build(length: SessionLength) async {
         isLoading = true
         defer { isLoading = false }
 
         // Daten laden.
         let markerStore = PracticeMarkerStore()
         await markerStore.loadAll()
-        let allMarkers = markerStore.markers
 
         let band = UserDefaults.standard.string(forKey: "selectedBandID")
         let setlist = SongCatalog(source: .setlist)
@@ -69,55 +77,67 @@ final class TodayPlanner: ObservableObject {
         let log = PracticeLogStore.shared
         if log.entries.isEmpty { await log.load() }
 
-        // Technik-Block wechselt tageweise (Interleaving).
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        let techniqueIsPick = (weekday % 2 == 0)
-        let technique = PlanBlock(
-            title: techniqueIsPick ? "Technik · Pick-Oktaven" : "Technik · Präzision",
-            subtitle: "Oktaven zum Klick, progressiv schneller",
-            minutes: 8, systemImage: "bolt.fill",
-            target: techniqueIsPick ? .pick : .precision
-        )
+        let picks = rankedProblems(markers: markerStore.markers, setlistIDs: setlistIDs, log: log)
+        let isPick = Calendar.current.component(.weekday, from: Date()) % 2 == 0
 
-        var result: [PlanBlock] = [
-            PlanBlock(title: "Warm-up", subtitle: "Orientierung – Quinten/Quarten, langsamer Klick",
-                      minutes: 5, systemImage: "flame.fill", target: .orientation),
-            PlanBlock(title: "Griffbrett", subtitle: "Pentatonic Shapes – eine Lage",
-                      minutes: 5, systemImage: "square.grid.3x3.fill", target: .pentatonic),
-            technique,
-        ]
-        if let problem = topProblem(markers: allMarkers, setlistIDs: setlistIDs, log: log) {
-            result.append(problem)
+        // Problemstellen-Block Nr. i (oder Skalen-Fallback, wenn nicht genug Marker).
+        func problem(_ i: Int, _ min: Int) -> PlanBlock {
+            guard i < picks.count else {
+                return PlanBlock(title: "Skalen & Griffbrett",
+                                 subtitle: "Pentatonik/Orientierung – frei über den Hals",
+                                 minutes: min, systemImage: "square.grid.3x3.fill", target: .pentatonic)
+            }
+            let p = picks[i]
+            let daysText = p.days.map { $0 == 0 ? "heute schon geübt" : "zuletzt vor \($0) Tg." } ?? "noch nie geübt"
+            return PlanBlock(title: "Problemstellen · \(p.reason.label)",
+                             subtitle: "\(p.count) markierte Stellen · \(daysText)",
+                             minutes: min, systemImage: p.reason.systemImage, target: .practiceClass(p.reason))
         }
-        result.append(PlanBlock(title: "Play-along", subtitle: "Setlist – 1 Song mitspielen",
-                                minutes: 4, systemImage: "music.note.list", target: .songs(.setlist)))
-        blocks = result
+        func warmup(_ m: Int) -> PlanBlock {
+            PlanBlock(title: "Warm-up", subtitle: "Orientierung – Quinten/Quarten, langsamer Klick",
+                      minutes: m, systemImage: "flame.fill", target: .orientation)
+        }
+        func fretboard(_ m: Int) -> PlanBlock {
+            PlanBlock(title: "Griffbrett", subtitle: "Pentatonic Shapes – eine Lage",
+                      minutes: m, systemImage: "square.grid.3x3.fill", target: .pentatonic)
+        }
+        func technique(_ m: Int) -> PlanBlock {
+            PlanBlock(title: isPick ? "Technik · Pick-Oktaven" : "Technik · Präzision",
+                      subtitle: "Oktaven zum Klick, progressiv schneller",
+                      minutes: m, systemImage: "bolt.fill", target: isPick ? .pick : .precision)
+        }
+        func play(_ m: Int) -> PlanBlock {
+            PlanBlock(title: "Play-along", subtitle: "Setlist – mitspielen",
+                      minutes: m, systemImage: "music.note.list", target: .songs(.setlist))
+        }
+
+        switch length {
+        case .s15:
+            blocks = [warmup(3), technique(4), problem(0, 5), play(3)]
+        case .s30:
+            blocks = [warmup(5), fretboard(5), technique(8), problem(0, 8), play(4)]
+        case .s45:
+            blocks = [warmup(6), fretboard(6), technique(9), problem(0, 10), problem(1, 8), play(6)]
+        case .s60:
+            blocks = [warmup(7), fretboard(8), technique(10), problem(0, 12), problem(1, 10), play(8), problem(2, 5)]
+        }
     }
 
-    /// Wählt den dringendsten Marker-Grund: viele Stellen + lange nicht geübt +
+    /// Marker-Gründe nach Dringlichkeit: viele Stellen + lange nicht geübt +
     /// Bezug zur aktuellen Setlist.
-    private func topProblem(markers: [PracticeMarker], setlistIDs: Set<String>, log: PracticeLogStore) -> PlanBlock? {
-        guard !markers.isEmpty else { return nil }
+    private func rankedProblems(markers: [PracticeMarker], setlistIDs: Set<String>, log: PracticeLogStore) -> [ProblemPick] {
+        guard !markers.isEmpty else { return [] }
         let byReason = Dictionary(grouping: markers) { $0.reason }
-        var best: (reason: PracticeReason, score: Double, count: Int, days: Int?)?
-        for (reason, ms) in byReason {
+        return byReason.map { reason, ms -> (ProblemPick, Double) in
             let count = ms.count
             let setlistHits = ms.filter { setlistIDs.contains($0.songID) }.count
             let days = daysSinceLastPracticed(label: reason.label, log: log)
-            let recency = Double(days ?? 30)                 // nie geübt ⇒ wie 30 Tage
+            let recency = Double(days ?? 30)
             let score = Double(count) + recency * 0.5 + Double(setlistHits) * 2
-            if best == nil || score > best!.score {
-                best = (reason, score, count, days)
-            }
+            return (ProblemPick(reason: reason, count: count, days: days), score)
         }
-        guard let b = best else { return nil }
-        let daysText = b.days.map { $0 == 0 ? "heute schon geübt" : "zuletzt vor \($0) Tg." } ?? "noch nie geübt"
-        return PlanBlock(
-            title: "Problemstellen · \(b.reason.label)",
-            subtitle: "\(b.count) markierte Stellen · \(daysText)",
-            minutes: 8, systemImage: b.reason.systemImage,
-            target: .practiceClass(b.reason)
-        )
+        .sorted { $0.1 > $1.1 }
+        .map { $0.0 }
     }
 
     private func daysSinceLastPracticed(label: String, log: PracticeLogStore) -> Int? {
@@ -135,26 +155,21 @@ final class TodayPlanner: ObservableObject {
 struct TodayView: View {
     @StateObject private var planner = TodayPlanner()
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("todayLength") private var lengthRaw: Int = 30
     @State private var active: PlanTarget?
+
+    private var length: SessionLength { SessionLength(rawValue: lengthRaw) ?? .s30 }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if planner.isLoading && planner.blocks.isEmpty {
-                    ProgressView("Stelle deine Session zusammen …").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List {
-                        Section {
-                            ForEach(planner.blocks) { block in
-                                Button { active = block.target } label: { row(block) }
-                            }
-                        } header: {
-                            Text("Heutige Session · \(planner.totalMinutes) min").textCase(nil)
-                        } footer: {
-                            Text("Automatisch aus Best-Practice-Vorlage + deinen Markern, dem Übungs-Log und der Setlist. Tippe einen Block, um direkt zu starten.")
-                        }
-                    }
+            VStack(spacing: 0) {
+                Picker("Dauer", selection: $lengthRaw) {
+                    ForEach(SessionLength.allCases) { Text("\($0.label) min").tag($0.rawValue) }
                 }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                Divider()
+                content
             }
             .navigationTitle("Heute üben")
             .navigationBarTitleDisplayMode(.inline)
@@ -163,12 +178,32 @@ struct TodayView: View {
                     Button { dismiss() } label: { Label("Menü", systemImage: "chevron.left") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await planner.build() } } label: { Image(systemName: "arrow.clockwise") }
+                    Button { Task { await planner.build(length: length) } } label: { Image(systemName: "arrow.clockwise") }
                 }
             }
-            .task { if planner.blocks.isEmpty { await planner.build() } }
+            .task { if planner.blocks.isEmpty { await planner.build(length: length) } }
+            .onChange(of: lengthRaw) { _, _ in Task { await planner.build(length: length) } }
             .fullScreenCover(item: $active) { target in
                 destination(for: target).logPractice(target.logLabel, active: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if planner.isLoading && planner.blocks.isEmpty {
+            ProgressView("Stelle deine Session zusammen …").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                Section {
+                    ForEach(planner.blocks) { block in
+                        Button { active = block.target } label: { row(block) }
+                    }
+                } header: {
+                    Text("Heutige Session · \(planner.totalMinutes) min").textCase(nil)
+                } footer: {
+                    Text("Automatisch aus Best-Practice-Vorlage + deinen Markern, dem Übungs-Log und der Setlist. Tippe einen Block, um direkt zu starten.")
+                }
             }
         }
     }
