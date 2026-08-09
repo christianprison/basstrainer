@@ -16,6 +16,7 @@ enum MenuMode {
     case help               // In-App-Hilfe
     case practiceClass      // Übungskapitel: alle markierten Stellen einer Kategorie
     case practiceLog        // Übungs-Log (was wann geübt)
+    case todayPlan          // "Heute üben": automatische Tages-Session
     case placeholder        // "Kommt bald"
 
     /// Wird das Öffnen dieser Ansicht als Übung ins Log geschrieben?
@@ -47,6 +48,9 @@ struct MenuItem: Identifiable, Hashable {
 /// "Werkzeuge"-Bereich für die native Noten-Erkennung.
 enum MenuConfig {
     static let main: [MenuItem] = [
+        MenuItem(id: "heute-ueben", label: "Heute üben",
+                 description: "Deine automatische Tages-Session aus Best Practices + deinen Herausforderungen",
+                 mode: .todayPlan),
         MenuItem(
             id: "griffbrett",
             label: "Griffbrett",

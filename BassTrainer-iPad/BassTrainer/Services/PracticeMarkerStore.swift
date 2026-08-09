@@ -19,6 +19,27 @@ final class PracticeMarkerStore: ObservableObject {
         markers.filter { $0.songID == songID }.sorted { $0.startBar < $1.startBar }
     }
 
+    /// Lädt ALLE Marker des Users (für den Übungsplaner).
+    func loadAll() async {
+        do {
+            let token = try await auth.token()
+            let data = try await SupabaseConfig.authedData(
+                method: "GET",
+                path: "practice_markers",
+                query: [
+                    URLQueryItem(name: "select", value: "*"),
+                    URLQueryItem(name: "order", value: "song_id.asc,start_bar.asc"),
+                ],
+                token: token
+            )
+            markers = try JSONDecoder().decode([PracticeMarker].self, from: data)
+            saveCache()
+            syncError = nil
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
     /// Lädt die Marker eines Songs frisch aus der DB (Cache bleibt bei Fehler erhalten).
     func load(songID: String) async {
         await migrateLegacyIfNeeded()

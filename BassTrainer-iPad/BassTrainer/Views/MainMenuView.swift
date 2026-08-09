@@ -75,6 +75,8 @@ private struct MenuLevelView: View {
             PentatonicView()
         case .practiceLog:
             PracticeLogView()
+        case .todayPlan:
+            TodayView()
         case .tuner:
             TunerView()
         case .precisionOctaves:
