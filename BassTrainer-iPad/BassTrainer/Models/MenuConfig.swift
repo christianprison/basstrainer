@@ -15,7 +15,19 @@ enum MenuMode {
     case curatorSettings    // Kurator-Status / eigene uid
     case help               // In-App-Hilfe
     case practiceClass      // Übungskapitel: alle markierten Stellen einer Kategorie
+    case practiceLog        // Übungs-Log (was wann geübt)
     case placeholder        // "Kommt bald"
+
+    /// Wird das Öffnen dieser Ansicht als Übung ins Log geschrieben?
+    var isPractice: Bool {
+        switch self {
+        case .fretboard, .orientation, .pickOctaves, .pentatonic, .precisionOctaves,
+             .songsList, .repertoireList, .introQuiz, .practiceClass:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Ein Menüeintrag: entweder Kategorie (mit `children`) oder Übung (mit `mode`).
@@ -83,6 +95,7 @@ enum MenuConfig {
             label: "Werkzeuge",
             description: "Hilfsmittel rund ums Üben",
             children: [
+                MenuItem(id: "uebungs-log", label: "Übungs-Log", description: "Was wann geübt – Basis für den späteren KI-Übungsplan", mode: .practiceLog),
                 MenuItem(id: "pitch-detection", label: "Noten-Erkennung", description: "Live-Tonhöhe vom (USB-)Audio-Eingang", mode: .tuner),
                 MenuItem(id: "intro-recorder", label: "Intro einspielen", description: "Song-Anfänge aufnehmen & in die DB schreiben (Kurator)", mode: .introRecorder),
                 MenuItem(id: "einstellungen", label: "Einstellungen", description: "Kurator-Status / Geräte-ID (uid)", mode: .curatorSettings),

@@ -42,6 +42,7 @@ private struct MenuLevelView: View {
         .navigationBarTitleDisplayMode(.large)
         .fullScreenCover(item: $activeLeaf) { leaf in
             destination(for: leaf)
+                .logPractice(leaf.label, active: leaf.mode?.isPractice == true, detail: leaf.description)
         }
     }
 
@@ -72,6 +73,8 @@ private struct MenuLevelView: View {
             PickOctavesView()
         case .pentatonic:
             PentatonicView()
+        case .practiceLog:
+            PracticeLogView()
         case .tuner:
             TunerView()
         case .precisionOctaves:
