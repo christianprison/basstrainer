@@ -338,7 +338,7 @@ struct SessionBlockContainer<Content: View>: View {
             Color.black.opacity(0.4).ignoresSafeArea()
             VStack(spacing: 16) {
                 Text("Zeit um").font(.title2).bold()
-                Text("„\(title)" · \(minutes) min").font(.subheadline).foregroundColor(.secondary)
+                Text("\(title) · \(minutes) min").font(.subheadline).foregroundColor(.secondary)
                 HStack(spacing: 12) {
                     Button("Nochmal") { clock.start(seconds: minutes * 60) }
                         .buttonStyle(.bordered).controlSize(.large)
