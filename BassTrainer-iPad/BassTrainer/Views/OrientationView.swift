@@ -63,14 +63,27 @@ struct OrientationView: View {
             case .row:
                 intervalPicker
                 startNoteMenu
+                beatsMenu
             case .oneString:
                 intervalPicker
                 startNoteMenu
                 stringMenu
+                beatsMenu
             case .findNote:
                 targetNoteMenu
             }
             Spacer()
+        }
+    }
+
+    /// Wie viele Klicks pro Ton (Zeit zum Suchen + alle Positionen spielen).
+    private var beatsMenu: some View {
+        Menu {
+            ForEach([2, 4, 8], id: \.self) { n in
+                Button("\(n) Klicks/Ton") { vm.beatsPerNote = n }
+            }
+        } label: {
+            labelChip(title: "Pro Ton", value: "\(vm.beatsPerNote)")
         }
     }
 
@@ -198,9 +211,12 @@ final class OrientationViewModel: ObservableObject {
     @Published var bpm: Double = 50
     @Published var isRunning = false
     @Published var stepIndex = 0
+    /// Wie viele Klicks pro Ton (Zeit zum Suchen + alle Positionen spielen).
+    @Published var beatsPerNote = 4
 
     private let audio = AudioEngine()
     private var timer: Timer?
+    private var beatCount = 0
     private let maxFret = 12
 
     /// 12-Ton-Reihe im gewählten Intervall ab Startton.
@@ -239,7 +255,8 @@ final class OrientationViewModel: ObservableObject {
     func start() {
         stop()
         isRunning = true
-        click()   // aktueller Ton sofort hörbar
+        beatCount = 0
+        click(accent: true)   // erster Klick des aktuellen Tons
         let step = 60.0 / max(30, bpm)
         timer = Timer.scheduledTimer(withTimeInterval: step, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.advance() }
@@ -255,18 +272,24 @@ final class OrientationViewModel: ObservableObject {
     func bpmChanged() { if isRunning { start() } }
 
     private func advance() {
-        if mode != .findNote { stepIndex = (stepIndex + 1) % sequence.count }
-        click()
+        if mode == .findNote { click(accent: false); return }
+        beatCount += 1
+        var noteChanged = false
+        if beatCount >= max(1, beatsPerNote) {
+            beatCount = 0
+            stepIndex = (stepIndex + 1) % sequence.count
+            noteChanged = true
+        }
+        click(accent: noteChanged)   // Betonung nur beim Ton-Wechsel
     }
 
-    private func click() {
-        let accent = (mode != .findNote) && (stepIndex % 12 == 0)
+    private func click(accent: Bool) {
         audio.playMetronomeClick(accent: accent)
     }
 
-    func next() { if mode != .findNote { stepIndex = (stepIndex + 1) % 12 } }
-    func prev() { if mode != .findNote { stepIndex = (stepIndex + 11) % 12 } }
-    func resetStep() { stepIndex = 0 }
+    func next() { if mode != .findNote { beatCount = 0; stepIndex = (stepIndex + 1) % 12 } }
+    func prev() { if mode != .findNote { beatCount = 0; stepIndex = (stepIndex + 11) % 12 } }
+    func resetStep() { beatCount = 0; stepIndex = 0 }
 }
 
 #Preview {

@@ -67,6 +67,8 @@ private struct MenuLevelView: View {
         switch item.mode {
         case .fretboard:
             ContentView()
+        case .warmup:
+            WarmupView()
         case .orientation:
             OrientationView()
         case .pickOctaves:

@@ -2,20 +2,22 @@ import SwiftUI
 
 /// Ziel eines Plan-Blocks – bestimmt, welche Übung direkt gestartet wird.
 enum PlanTarget: Identifiable, Equatable {
+    case warmup
     case orientation
     case pentatonic
     case pick
     case precision
-    case practiceClass(PracticeReason)
+    case practiceClass(PracticeReason, contextOnly: Bool)
     case songs(SongSource)
 
     var id: String {
         switch self {
+        case .warmup:      return "warmup"
         case .orientation: return "orientation"
         case .pentatonic:  return "pentatonic"
         case .pick:        return "pick"
         case .precision:   return "precision"
-        case .practiceClass(let r): return "pc-\(r.rawValue)"
+        case .practiceClass(let r, let ctx): return "pc-\(r.rawValue)-\(ctx ? "ctx" : "all")"
         case .songs(let s): return "songs-\(s == .setlist ? "set" : "rep")"
         }
     }
@@ -23,11 +25,12 @@ enum PlanTarget: Identifiable, Equatable {
     /// Label fürs Übungs-Log (identisch zu den Menü-Labels → konsistente Kategorien).
     var logLabel: String {
         switch self {
+        case .warmup:      return "Warm-up"
         case .orientation: return "Orientierung"
         case .pentatonic:  return "Pentatonic Shapes"
         case .pick:        return "Pick"
         case .precision:   return "Oktaven"
-        case .practiceClass(let r): return r.label
+        case .practiceClass(let r, _): return r.label
         case .songs(let s): return s == .setlist ? "Aktuelle Setlist" : "Alle Songs"
         }
     }
@@ -78,6 +81,9 @@ final class TodayPlanner: ObservableObject {
         if log.entries.isEmpty { await log.load() }
 
         let picks = rankedProblems(markers: markerStore.markers, setlistIDs: setlistIDs, log: log)
+        // Nur „im Zusammenhang"-Marker (für kurze Sessions als Playalong-Ersatz).
+        let contextPicks = rankedProblems(markers: markerStore.markers.filter { $0.mode == .context },
+                                          setlistIDs: setlistIDs, log: log)
         let isPick = Calendar.current.component(.weekday, from: Date()) % 2 == 0
 
         // Problemstellen-Block Nr. i (oder Skalen-Fallback, wenn nicht genug Marker).
@@ -91,11 +97,11 @@ final class TodayPlanner: ObservableObject {
             let daysText = p.days.map { $0 == 0 ? "heute schon geübt" : "zuletzt vor \($0) Tg." } ?? "noch nie geübt"
             return PlanBlock(title: "Problemstellen · \(p.reason.label)",
                              subtitle: "\(p.count) markierte Stellen · \(daysText)",
-                             minutes: min, systemImage: p.reason.systemImage, target: .practiceClass(p.reason))
+                             minutes: min, systemImage: p.reason.systemImage, target: .practiceClass(p.reason, contextOnly: false))
         }
         func warmup(_ m: Int) -> PlanBlock {
-            PlanBlock(title: "Warm-up", subtitle: "Orientierung – Quinten/Quarten, langsamer Klick",
-                      minutes: m, systemImage: "flame.fill", target: .orientation)
+            PlanBlock(title: "Warm-up", subtitle: "Chromatic Crawl / Spider zum Klick",
+                      minutes: m, systemImage: "flame.fill", target: .warmup)
         }
         func fretboard(_ m: Int) -> PlanBlock {
             PlanBlock(title: "Griffbrett", subtitle: "Pentatonic Shapes – eine Lage",
@@ -110,12 +116,21 @@ final class TodayPlanner: ObservableObject {
             PlanBlock(title: "Play-along", subtitle: "Setlist – mitspielen",
                       minutes: m, systemImage: "music.note.list", target: .songs(.setlist))
         }
+        // Kurze Sessions: statt freiem Play-along die kritischen Stellen „im
+        // Zusammenhang" (Kontext-Marker); sonst Fallback auf Setlist.
+        func contextPlay(_ m: Int) -> PlanBlock {
+            guard let p = contextPicks.first else { return play(m) }
+            return PlanBlock(title: "Im Zusammenhang · \(p.reason.label)",
+                             subtitle: "\(p.count) kritische Stellen mit Anlauf",
+                             minutes: m, systemImage: "arrow.turn.down.right",
+                             target: .practiceClass(p.reason, contextOnly: true))
+        }
 
         switch length {
         case .s15:
-            blocks = [warmup(3), technique(4), problem(0, 5), play(3)]
+            blocks = [warmup(3), technique(4), problem(0, 5), contextPlay(3)]
         case .s30:
-            blocks = [warmup(5), fretboard(5), technique(8), problem(0, 8), play(4)]
+            blocks = [warmup(5), fretboard(5), technique(8), problem(0, 8), contextPlay(4)]
         case .s45:
             blocks = [warmup(6), fretboard(6), technique(9), problem(0, 10), problem(1, 8), play(6)]
         case .s60:
@@ -156,11 +171,14 @@ struct TodayView: View {
     @StateObject private var planner = TodayPlanner()
     @Environment(\.dismiss) private var dismiss
     @AppStorage("todayLength") private var lengthRaw: Int = 30
-    @State private var active: PlanTarget?
-    @State private var lastStarted: PlanTarget?
+    @State private var runningIndex: Int?
     @State private var done: Set<String> = []
 
     private var length: SessionLength { SessionLength(rawValue: lengthRaw) ?? .s30 }
+    private var runningBlock: PlanBlock? {
+        guard let i = runningIndex, planner.blocks.indices.contains(i) else { return nil }
+        return planner.blocks[i]
+    }
 
     var body: some View {
         NavigationStack {
@@ -185,11 +203,19 @@ struct TodayView: View {
             }
             .task { if planner.blocks.isEmpty { await planner.build(length: length) } }
             .onChange(of: lengthRaw) { _, _ in done.removeAll(); Task { await planner.build(length: length) } }
-            .fullScreenCover(item: $active, onDismiss: {
-                // Zurück aus der Übung → Block als erledigt markieren.
-                if let t = lastStarted { done.insert(t.id) }
-            }) { target in
-                destination(for: target).logPractice(target.logLabel, active: true)
+            .fullScreenCover(item: Binding(get: { runningBlock }, set: { if $0 == nil { runningIndex = nil } })) { block in
+                SessionBlockContainer(
+                    title: block.title,
+                    minutes: block.minutes,
+                    onNext: {
+                        done.insert(block.target.id)
+                        if let i = runningIndex, i + 1 < planner.blocks.count { runningIndex = i + 1 }
+                        else { runningIndex = nil }
+                    },
+                    onCancel: { runningIndex = nil }
+                ) {
+                    destination(for: block.target).logPractice(block.target.logLabel, active: true)
+                }
             }
         }
     }
@@ -201,8 +227,8 @@ struct TodayView: View {
         } else {
             List {
                 Section {
-                    ForEach(planner.blocks) { block in
-                        Button { lastStarted = block.target; active = block.target } label: { row(block) }
+                    ForEach(Array(planner.blocks.enumerated()), id: \.element.id) { i, block in
+                        Button { runningIndex = i } label: { row(block) }
                     }
                 } header: {
                     let allDone = !planner.blocks.isEmpty && planner.blocks.allSatisfy { done.contains($0.target.id) }
@@ -235,12 +261,95 @@ struct TodayView: View {
     @ViewBuilder
     private func destination(for target: PlanTarget) -> some View {
         switch target {
+        case .warmup:      WarmupView()
         case .orientation: OrientationView()
         case .pentatonic:  PentatonicView()
         case .pick:        PickOctavesView()
         case .precision:   PrecisionOctavesView()
-        case .practiceClass(let r): PracticeClassView(reason: r)
+        case .practiceClass(let r, let ctx): PracticeClassView(reason: r, contextOnly: ctx)
         case .songs(let s): SongsView(source: s)
+        }
+    }
+}
+
+// MARK: - Session-Block mit Timer + Dialog
+
+/// Uhr für einen Block; feuert nach `seconds`.
+@MainActor
+final class BlockClock: ObservableObject {
+    @Published var remaining = 0
+    @Published var finished = false
+    private var timer: Timer?
+
+    func start(seconds: Int) {
+        stop(); remaining = max(1, seconds); finished = false
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.remaining > 0 { self.remaining -= 1 }
+                if self.remaining <= 0 { self.stop(); self.finished = true }
+            }
+        }
+    }
+    func stop() { timer?.invalidate(); timer = nil }
+}
+
+/// Umschließt eine Übung, zeigt einen Countdown und nach Ablauf einen Dialog
+/// „Nochmal / Weiter / Abbrechen".
+struct SessionBlockContainer<Content: View>: View {
+    let title: String
+    let minutes: Int
+    let onNext: () -> Void
+    let onCancel: () -> Void
+    let content: Content
+    @StateObject private var clock = BlockClock()
+
+    init(title: String, minutes: Int, onNext: @escaping () -> Void, onCancel: @escaping () -> Void,
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.minutes = minutes
+        self.onNext = onNext
+        self.onCancel = onCancel
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            content
+            VStack {
+                HStack {
+                    Spacer()
+                    Text("\(clock.remaining / 60):\(String(format: "%02d", clock.remaining % 60))")
+                        .font(.caption).monospacedDigit().fontWeight(.semibold)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.trailing, 12).padding(.top, 6)
+                }
+                Spacer()
+            }
+            if clock.finished { dialog }
+        }
+        .onAppear { clock.start(seconds: minutes * 60) }
+        .onDisappear { clock.stop() }
+    }
+
+    private var dialog: some View {
+        ZStack {
+            Color.black.opacity(0.4).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("Zeit um").font(.title2).bold()
+                Text("„\(title)" · \(minutes) min").font(.subheadline).foregroundColor(.secondary)
+                HStack(spacing: 12) {
+                    Button("Nochmal") { clock.start(seconds: minutes * 60) }
+                        .buttonStyle(.bordered).controlSize(.large)
+                    Button("Weiter") { onNext() }
+                        .buttonStyle(.borderedProminent).controlSize(.large)
+                }
+                Button("Abbrechen", role: .cancel) { onCancel() }
+            }
+            .padding(28)
+            .background(RoundedRectangle(cornerRadius: 20).fill(.regularMaterial))
+            .padding(40)
         }
     }
 }

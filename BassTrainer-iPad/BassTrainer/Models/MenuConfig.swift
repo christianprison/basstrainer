@@ -3,6 +3,7 @@ import Foundation
 /// Welche Ansicht ein Menü-Blatt startet.
 enum MenuMode {
     case fretboard          // klassischer Griffbrett-Trainer (ContentView)
+    case warmup             // Finger-Warm-ups: Chromatic Crawl / Spider
     case orientation        // Orientierung: Töne auf dem Hals (Quinten/Quarten, Saite, Ton finden)
     case pickOctaves        // Plektrum-Übung: Oktaven zum Klick (+ Dead Notes)
     case pentatonic         // Pentatonic Shapes (Dur/Moll, 5 Lagen)
@@ -22,7 +23,7 @@ enum MenuMode {
     /// Wird das Öffnen dieser Ansicht als Übung ins Log geschrieben?
     var isPractice: Bool {
         switch self {
-        case .fretboard, .orientation, .pickOctaves, .pentatonic, .precisionOctaves,
+        case .fretboard, .warmup, .orientation, .pickOctaves, .pentatonic, .precisionOctaves,
              .songsList, .repertoireList, .introQuiz, .practiceClass:
             return true
         default:
@@ -56,6 +57,7 @@ enum MenuConfig {
             label: "Griffbrett",
             description: "Notenerkennung & Navigation auf dem Griffbrett",
             children: [
+                MenuItem(id: "warmup", label: "Warm-up", description: "Finger-Aufwärmen: Chromatic Crawl & Spider zum Klick", mode: .warmup),
                 MenuItem(id: "orientierung", label: "Orientierung", description: "Töne auf dem Hals finden: Quinten/Quarten-Reihe, eine Saite, ein Ton über alle Saiten", mode: .orientation),
                 MenuItem(id: "griffbrett-trainer", label: "Griffbrett", description: "Das klassische BassTrainer-Training", mode: .fretboard),
                 MenuItem(id: "uebung-lagenwechsel", label: "Lagenwechsel", description: "Alle markierten Lagenwechsel durchüben", mode: .practiceClass, practiceReason: .shift),

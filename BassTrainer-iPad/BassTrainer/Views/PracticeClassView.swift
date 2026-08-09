@@ -9,9 +9,9 @@ struct PracticeClassView: View {
     @StateObject private var vm: PracticeClassViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(reason: PracticeReason) {
+    init(reason: PracticeReason, contextOnly: Bool = false) {
         self.reason = reason
-        _vm = StateObject(wrappedValue: PracticeClassViewModel(reason: reason))
+        _vm = StateObject(wrappedValue: PracticeClassViewModel(reason: reason, contextOnly: contextOnly))
     }
 
     var body: some View {
@@ -120,9 +120,11 @@ final class PracticeClassViewModel: ObservableObject {
     private let detail = SongDetailViewModel()
     private var songsByID: [String: CatalogSong] = [:]
     private var cancellables = Set<AnyCancellable>()
+    private let contextOnly: Bool
 
-    init(reason: PracticeReason) {
+    init(reason: PracticeReason, contextOnly: Bool = false) {
         self.reason = reason
+        self.contextOnly = contextOnly
         // Änderungen von Player und Speed-Trainer an die View weiterreichen.
         player.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -142,7 +144,7 @@ final class PracticeClassViewModel: ObservableObject {
         songsByID = Dictionary(catalog.songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // Nur Stellen von Songs der aktiven Band zeigen.
         let all = await store.markers(forReason: reason)
-        spots = all.filter { songsByID[$0.songID] != nil }
+        spots = all.filter { songsByID[$0.songID] != nil && (!contextOnly || $0.mode == .context) }
         if spots.isEmpty { error = store.syncError }
         isLoading = false
     }
