@@ -157,6 +157,8 @@ struct TodayView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("todayLength") private var lengthRaw: Int = 30
     @State private var active: PlanTarget?
+    @State private var lastStarted: PlanTarget?
+    @State private var done: Set<String> = []
 
     private var length: SessionLength { SessionLength(rawValue: lengthRaw) ?? .s30 }
 
@@ -178,12 +180,15 @@ struct TodayView: View {
                     Button { dismiss() } label: { Label("Menü", systemImage: "chevron.left") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await planner.build(length: length) } } label: { Image(systemName: "arrow.clockwise") }
+                    Button { done.removeAll(); Task { await planner.build(length: length) } } label: { Image(systemName: "arrow.clockwise") }
                 }
             }
             .task { if planner.blocks.isEmpty { await planner.build(length: length) } }
-            .onChange(of: lengthRaw) { _, _ in Task { await planner.build(length: length) } }
-            .fullScreenCover(item: $active) { target in
+            .onChange(of: lengthRaw) { _, _ in done.removeAll(); Task { await planner.build(length: length) } }
+            .fullScreenCover(item: $active, onDismiss: {
+                // Zurück aus der Übung → Block als erledigt markieren.
+                if let t = lastStarted { done.insert(t.id) }
+            }) { target in
                 destination(for: target).logPractice(target.logLabel, active: true)
             }
         }
@@ -197,12 +202,13 @@ struct TodayView: View {
             List {
                 Section {
                     ForEach(planner.blocks) { block in
-                        Button { active = block.target } label: { row(block) }
+                        Button { lastStarted = block.target; active = block.target } label: { row(block) }
                     }
                 } header: {
-                    Text("Heutige Session · \(planner.totalMinutes) min").textCase(nil)
+                    let allDone = !planner.blocks.isEmpty && planner.blocks.allSatisfy { done.contains($0.target.id) }
+                    Text(allDone ? "Session abgeschlossen 🎉" : "Heutige Session · \(planner.totalMinutes) min").textCase(nil)
                 } footer: {
-                    Text("Automatisch aus Best-Practice-Vorlage + deinen Markern, dem Übungs-Log und der Setlist. Tippe einen Block, um direkt zu starten.")
+                    Text("Automatisch aus Best-Practice-Vorlage + deinen Markern, dem Übungs-Log und der Setlist. Tippe einen Block, um direkt zu starten – nach der Übung wird er automatisch abgehakt.")
                 }
             }
         }
@@ -218,7 +224,9 @@ struct TodayView: View {
             }
             Spacer()
             Text("\(block.minutes) min").font(.subheadline).monospacedDigit().foregroundColor(.secondary)
-            Image(systemName: "play.circle.fill").font(.title3).foregroundColor(.accentColor)
+            let isDone = done.contains(block.target.id)
+            Image(systemName: isDone ? "checkmark.circle.fill" : "play.circle.fill")
+                .font(.title3).foregroundColor(isDone ? .green : .accentColor)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

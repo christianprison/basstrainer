@@ -17,16 +17,21 @@ struct PentatonicView: View {
             }
             positionPicker
             caption
-            FretboardView(
-                currentPosition: nil,
-                isPlaying: false,
-                levelColor: .accentColor,
-                markers: vm.scaleMarkers,
-                markerColor: Color(red: 0.20, green: 0.50, blue: 0.95),
-                rootMarkers: vm.rootMarkers,
-                rootColor: Color(red: 0.90, green: 0.20, blue: 0.55)
-            )
-            .aspectRatio(4019.0 / 332.0, contentMode: .fit)
+            // 2× herangezoomt, horizontal scrollbar → Buchstaben überlappen nicht.
+            ScrollView(.horizontal, showsIndicators: true) {
+                let boardWidth: CGFloat = 1800
+                FretboardView(
+                    currentPosition: nil,
+                    isPlaying: false,
+                    levelColor: .accentColor,
+                    markers: vm.scaleMarkers,
+                    markerColor: Color(red: 0.20, green: 0.50, blue: 0.95),
+                    rootMarkers: vm.rootMarkers,
+                    rootColor: Color(red: 0.90, green: 0.20, blue: 0.55),
+                    markerScale: 0.78
+                )
+                .frame(width: boardWidth, height: boardWidth * 332.0 / 4019.0)
+            }
             legend
             Spacer(minLength: 0)
         }

@@ -10,6 +10,8 @@ struct FretboardView: View {
     /// Grundton-Marker in eigener Farbe (über den normalen Markern gezeichnet).
     var rootMarkers: [FretPosition] = []
     var rootColor: Color = Color(red: 0.90, green: 0.20, blue: 0.55)
+    /// Skaliert die Marker-Größe (z. B. 0.7 = kleiner, gegen Überlappung).
+    var markerScale: CGFloat = 1.0
 
     // Calibrated positions reference width (from web version)
     private static let referenceWidth: CGFloat = 1883.0
@@ -110,7 +112,7 @@ struct FretboardView: View {
                 }
 
                 // Beschriftete Marker (Orientierung): alle übergebenen Positionen.
-                let dia = min(34, max(18, renderedHeight * 0.5))
+                let dia = min(26, max(14, renderedHeight * 0.4)) * markerScale
                 ForEach(Array(markers.enumerated()), id: \.offset) { _, pos in
                     let point = notePosition(position: pos, viewWidth: renderedWidth, viewHeight: renderedHeight)
                     FretMarkerLabel(text: pos.note.rawValue, point: point, color: markerColor, diameter: dia)
