@@ -90,6 +90,64 @@ enum BassIntro {
         (openMidi[string] ?? 23) + fret
     }
 
+    /// Weist einer ganzen Tonfolge Saite/Bund zu und **minimiert die
+    /// Bundabstände** zwischen aufeinanderfolgenden Tönen (dynamische
+    /// Programmierung). Nil für Töne außerhalb des Griffbereichs.
+    static func optimalPositions(forMidis midis: [Int], maxFret: Int = 17) -> [(string: Int, fret: Int)?] {
+        let n = midis.count
+        guard n > 0 else { return [] }
+        // Kandidaten je Ton.
+        let cands: [[(s: Int, f: Int)]] = midis.map { m in
+            var cs: [(Int, Int)] = []
+            for s in 1...5 {
+                if let open = openMidi[s] {
+                    let f = m - open
+                    if f >= 0 && f <= maxFret { cs.append((s, f)) }
+                }
+            }
+            return cs
+        }
+        let INF = Double.greatestFiniteMagnitude
+        var dp = cands.map { $0.map { _ in INF } }
+        var back = cands.map { $0.map { _ in -1 } }
+        for (j, c) in cands[0].enumerated() { dp[0][j] = Double(c.f) * 0.1 }  // tiefe Startlage bevorzugen
+        if n > 1 {
+            for i in 1..<n {
+                for (j, c) in cands[i].enumerated() {
+                    if cands[i - 1].isEmpty {
+                        dp[i][j] = Double(c.f) * 0.1   // Neustart nach Lücke
+                        continue
+                    }
+                    var best = INF, bestK = -1
+                    for (k, pc) in cands[i - 1].enumerated() where dp[i - 1][k] != INF {
+                        // primär Bundabstand, leichte Straffung für Saitenwechsel + hohe Lagen
+                        let move = abs(Double(c.f - pc.f)) + 0.25 * abs(Double(c.s - pc.s)) + Double(c.f) * 0.02
+                        if dp[i - 1][k] + move < best { best = dp[i - 1][k] + move; bestK = k }
+                    }
+                    dp[i][j] = best; back[i][j] = bestK
+                }
+            }
+        }
+        var result = [(string: Int, fret: Int)?](repeating: nil, count: n)
+        guard let last = (0..<n).reversed().first(where: { !cands[$0].isEmpty }) else { return result }
+        var jBest = 0, cBest = INF
+        for (j, _) in cands[last].enumerated() where dp[last][j] < cBest { cBest = dp[last][j]; jBest = j }
+        var i = last, j = jBest
+        while i >= 0, j >= 0 {
+            let c = cands[i][j]
+            result[i] = (c.s, c.f)
+            let pj = back[i][j]
+            i -= 1
+            if i < 0 || pj < 0 { break }
+            j = pj
+        }
+        // Lücken (Neustarts / unabgedeckte Töne) unabhängig mit tiefster Lage füllen.
+        for k in 0..<n where result[k] == nil && !cands[k].isEmpty {
+            if let c = cands[k].min(by: { $0.f < $1.f }) { result[k] = (c.s, c.f) }
+        }
+        return result
+    }
+
     /// Griffbrett-Position (für die Bass-Sample-Wiedergabe der Griffbrett-Übung).
     /// Mappt die Intro-Saiten (1=B…5=G) auf `BassString` (g=0…b=4).
     static func fretPosition(forMidi m: Int) -> FretPosition {

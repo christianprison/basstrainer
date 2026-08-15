@@ -176,10 +176,23 @@ struct IntroRecorderView: View {
                     }
                     .padding(.horizontal)
                 }
-                Stepper(value: $vm.tempo, in: 40...240, step: 1) {
-                    Label("Tempo: \(Int(vm.tempo)) BPM", systemImage: "metronome")
+                VStack(spacing: 4) {
+                    HStack {
+                        Label("Aufnahme-Tempo", systemImage: "metronome").font(.subheadline)
+                        Spacer()
+                        if let orig = vm.selectedSong?.bpm, orig > 0 {
+                            Text("\(Int(vm.tempo)) BPM · \(Int(vm.tempo / Double(orig) * 100))%")
+                                .font(.caption).monospacedDigit().foregroundColor(.secondary)
+                            Button("Original") { vm.tempo = Double(orig) }.font(.caption)
+                        } else {
+                            Text("\(Int(vm.tempo)) BPM").font(.caption).monospacedDigit().foregroundColor(.secondary)
+                        }
+                    }
+                    Slider(value: $vm.tempo, in: 30...240, step: 1)
+                    Text("Für schnelle Anfänge langsamer aufnehmen – die erkannten Beat-Positionen bleiben korrekt.")
+                        .font(.caption2).foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 30)
+                .padding(.horizontal, 20)
                 detectionSettings
                 if !vm.notes.isEmpty {
                     Button("Vorhandene bearbeiten") { vm.phase = .edit }.font(.caption)
@@ -710,6 +723,12 @@ final class IntroRecorderViewModel: ObservableObject {
         let sorted = captured.sorted { $0.time < $1.time }
         var result = sorted.enumerated().map { i, c in
             makeNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur))
+        }
+        // Lagen-optimierte Zuweisung: minimale Bundabstände über die ganze Folge.
+        let pos = BassIntro.optimalPositions(forMidis: result.map { $0.midi })
+        for i in result.indices where i < pos.count {
+            result[i].string = pos[i]?.string
+            result[i].fret = pos[i]?.fret
         }
         applyDurations(&result)
         notes = result
