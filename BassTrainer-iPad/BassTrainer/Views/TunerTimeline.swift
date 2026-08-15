@@ -161,12 +161,15 @@ struct TabTimelineView: View {
                 if t > now { break }
                 let x = size.width - CGFloat(now - t) * px
                 if x >= 0 {
-                    let accent = k % 4 == 0
+                    let isBar = k % 4 == 0     // jede 4. Zählzeit = Taktstrich
                     var p = Path()
                     p.move(to: CGPoint(x: x, y: 0))
                     p.addLine(to: CGPoint(x: x, y: size.height))
-                    ctx.stroke(p, with: .color(.secondary.opacity(accent ? 0.35 : 0.15)),
-                               lineWidth: accent ? 1.5 : 1)
+                    if isBar {
+                        ctx.stroke(p, with: .color(.primary.opacity(0.45)), lineWidth: 2)
+                    } else {
+                        ctx.stroke(p, with: .color(.secondary.opacity(0.14)), lineWidth: 1)
+                    }
                 }
                 k += 1
             }
