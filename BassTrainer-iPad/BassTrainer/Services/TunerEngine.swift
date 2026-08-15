@@ -41,10 +41,11 @@ final class TunerEngine: ObservableObject {
     private var holdPitch: Int?
     private var holdCount = 0
     private var emitted = false
-    private let holdGateRMS: Float = 0.02
+    private let holdGateRMS: Float = 0.012
 
-    /// Analysis window. ~85 ms at 48 kHz — enough periods for low B (~31 Hz).
-    private let analysisSize = 4096
+    /// Analysis window. ~170 ms at 48 kHz — genug Perioden auch für tiefe Töne
+    /// (low B ~31 Hz) und einen stabileren Obertön-Fingerprint.
+    private let analysisSize = 8192
     private var ringBuffer: [Float] = []
     private let detectionQueue = DispatchQueue(label: "de.prisons.basstrainer.pitch", qos: .userInitiated)
     private var detectionInFlight = false

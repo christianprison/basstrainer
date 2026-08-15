@@ -151,6 +151,7 @@ final class NoteRecognizerViewModel: ObservableObject {
     }
 
     func choose(_ c: ScoredCandidate) {
+        matcher.confirm(key: c.key)   // Feedback lernen: Fingerprint → Position
         let map: [Int: BassString] = [1: .b, 2: .e, 3: .a, 4: .d, 5: .g]
         audio.playBassNote(position: FretPosition(string: map[c.string] ?? .e, fret: c.fret))
         confirmed = "\(BassIntro.stringName[c.string] ?? "?")-Saite, Bund \(c.fret) (\(c.noteName))"

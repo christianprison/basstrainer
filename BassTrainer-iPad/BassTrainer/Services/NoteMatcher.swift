@@ -13,13 +13,49 @@ struct ScoredCandidate: Identifiable, Equatable {
     var score: Double
 }
 
+/// Merkt sich pro Position die bestätigten Fingerprints des eigenen Basses,
+/// damit die Erkennung sich über die Zeit an das Instrument anpasst.
+final class RecognitionMemory {
+    private var store: [String: [[Float]]] = [:]
+    private let defaultsKey = "noteRecog.memory.v1"
+    private let cap = 8
+
+    init() { load() }
+
+    func add(_ fp: [Float], key: String) {
+        guard !fp.isEmpty else { return }
+        var arr = store[key] ?? []
+        arr.append(fp)
+        if arr.count > cap { arr.removeFirst(arr.count - cap) }
+        store[key] = arr
+        save()
+    }
+
+    /// Beste Ähnlichkeit zu den gespeicherten Beispielen (–1 = keine).
+    func bestSim(_ fp: [Float], key: String) -> Float {
+        guard let arr = store[key], !arr.isEmpty else { return -1 }
+        return arr.map { NoteMatcher.cosine(fp, $0) }.max() ?? -1
+    }
+
+    private func load() {
+        if let d = UserDefaults.standard.data(forKey: defaultsKey),
+           let s = try? JSONDecoder().decode([String: [[Float]]].self, from: d) { store = s }
+    }
+    private func save() {
+        if let d = try? JSONEncoder().encode(store) { UserDefaults.standard.set(d, forKey: defaultsKey) }
+    }
+}
+
 /// Vergleicht einen gespielten Ton mit den gespeicherten Bass-Samples und
-/// rankt die passenden Saiten/Bünde. Kern: ein Obertö­n-Fingerprint (Magnituden
-/// bei f0…8·f0 via Goertzel), verglichen per Cosinus-Ähnlichkeit.
+/// rankt die passenden Saiten/Bünde. Fingerprint = normierte Obertö­n-Magnituden
+/// (f0…8·f0, Goertzel); Tonhöhe der Samples wird gemessen (oktavrobust).
 @MainActor
 final class NoteMatcher {
+    let memory = RecognitionMemory()
+
     private let audio: AudioEngine
-    private var fpCache: [String: [Float]] = [:]
+    private var cache: [String: (fp: [Float], f0: Double)] = [:]
+    private var lastInputFP: [Float] = []
     private let harmonics = 8
 
     init(audio: AudioEngine) { self.audio = audio }
@@ -29,7 +65,6 @@ final class NoteMatcher {
         let freq: Double; let key: String; let noteName: String
     }
 
-    /// Alle Positionen (5 Saiten × Bund 0…12) mit Tonhöhe + Sample-Key.
     private lazy var allPositions: [Pos] = {
         let map: [(Int, BassString)] = [(1, .b), (2, .e), (3, .a), (4, .d), (5, .g)]
         var res: [Pos] = []
@@ -45,51 +80,83 @@ final class NoteMatcher {
         return res
     }()
 
-    /// Rankt die Kandidaten für einen gespielten Ton (Eingangsfenster + f0).
+    /// Bestätigte Auswahl lernen (Fingerprint des letzten Tons → Position).
+    func confirm(key: String) { memory.add(lastInputFP, key: key) }
+
     func rank(input: [Float], sampleRate: Double, f0: Double, maxCandidates: Int = 4)
         async -> (candidates: [ScoredCandidate], bestScore: Double) {
         guard f0 > 20, input.count > 256 else { return ([], 0) }
-        let inFP = Self.fingerprint(input, sampleRate: sampleRate, f0: f0, harmonics: harmonics)
+        let refined = Self.refineF0(input, sampleRate: sampleRate, f0: f0)
+        let inFP = Self.fingerprint(input, sampleRate: sampleRate, f0: refined, harmonics: harmonics)
+        lastInputFP = inFP
 
-        // Kandidaten: Positionen im Umkreis von ~1,5 Halbtönen um die gespielte Tonhöhe.
-        let cands = allPositions.filter { abs(1200 * log2(f0 / $0.freq)) < 160 }
+        // Grobes Netz über ~1 Oktave (fängt oktavversetzte Modellfrequenzen),
+        // danach exakt über die GEMESSENE Sample-Tonhöhe filtern.
+        let loose = allPositions.filter { abs(1200 * log2(refined / $0.freq)) < 1300 }
         var scored: [ScoredCandidate] = []
-        for c in cands {
-            guard let fp = await sampleFingerprint(c) else { continue }
-            let timbre = Double(Self.cosine(inFP, fp))
-            let cents = 1200 * log2(f0 / c.freq)
-            let pitchScore = exp(-pow(cents / 70.0, 2))       // Tonhöhen-Nähe
-            let score = pitchScore * (0.35 + 0.65 * max(0, timbre))
+        for c in loose {
+            guard let s = await sampleData(c) else { continue }
+            guard abs(1200 * log2(refined / s.f0)) < 45 else { continue }   // gleiche Tonhöhe
+            let timbre = Double(Self.cosine(inFP, s.fp))
+            let userSim = Double(memory.bestSim(inFP, key: c.key))
+            let sim = userSim >= 0 ? 0.5 * timbre + 0.5 * userSim : timbre
             scored.append(ScoredCandidate(string: c.string, fret: c.fret, midi: c.midi,
-                                          key: c.key, noteName: c.noteName, probability: 0, score: score))
+                                          key: c.key, noteName: c.noteName,
+                                          probability: 0, score: max(0, sim)))
         }
         scored.sort { $0.score > $1.score }
         var top = Array(scored.prefix(maxCandidates))
         let best = top.first?.score ?? 0
-        // Softmax → Wahrscheinlichkeiten.
-        let temp = 0.15
+        let temp = 0.12
         let exps = top.map { exp($0.score / temp) }
         let sum = exps.reduce(0, +)
         for i in top.indices { top[i].probability = sum > 0 ? exps[i] / sum : 0 }
         return (top, best)
     }
 
-    private func sampleFingerprint(_ c: Pos) async -> [Float]? {
-        if let fp = fpCache[c.key] { return fp }
+    /// Fingerprint + gemessene Grundfrequenz eines Samples (gecacht).
+    private func sampleData(_ c: Pos) async -> (fp: [Float], f0: Double)? {
+        if let cached = cache[c.key] { return cached }
         guard let url = await audio.ensureSample(key: c.key),
               let pcm = Self.loadPCM(url: url) else { return nil }
         let sr = pcm.sampleRate
-        // Stabiles Fenster hinter dem Attack.
-        let startIdx = min(max(0, pcm.samples.count - 1), Int(sr * 0.12))
-        let endIdx = min(pcm.samples.count, startIdx + Int(sr * 0.25))
-        guard endIdx > startIdx else { return nil }
-        let window = Array(pcm.samples[startIdx..<endIdx])
-        let fp = Self.fingerprint(window, sampleRate: sr, f0: c.freq, harmonics: harmonics)
-        fpCache[c.key] = fp
-        return fp
+        let start = min(max(0, pcm.samples.count - 1), Int(sr * 0.12))
+        let end = min(pcm.samples.count, start + Int(sr * 0.30))
+        guard end > start + 256 else { return nil }
+        let win = Array(pcm.samples[start..<end])
+        let f0 = Self.measureF0(win, sampleRate: sr, hint: c.freq)
+        let fp = Self.fingerprint(win, sampleRate: sr, f0: f0, harmonics: harmonics)
+        let res = (fp, f0)
+        cache[c.key] = res
+        return res
     }
 
     // MARK: - DSP
+
+    /// Oktav-Korrektur: ist die Subokta­ve ähnlich stark, liegt die echte
+    /// Grundfrequenz tiefer (behebt Oktav-zu-hoch-Fehler der Pitch-Erkennung).
+    static func refineF0(_ x: [Float], sampleRate: Double, f0: Double) -> Double {
+        var f = f0
+        for _ in 0..<2 {
+            let half = f / 2
+            if half < 28 { break }
+            let mF = goertzel(x, sampleRate: sampleRate, freq: f)
+            let mH = goertzel(x, sampleRate: sampleRate, freq: half)
+            if mH > mF * 0.8 { f = half } else { break }
+        }
+        return f
+    }
+
+    /// Sample-Grundfrequenz robust bestimmen (nur um den Hinweis herum, damit
+    /// keine Oktavfehler entstehen).
+    static func measureF0(_ x: [Float], sampleRate: Double, hint: Double) -> Double {
+        let cands = [hint / 2, hint, hint * 2].filter { $0 > 25 && $0 < sampleRate / 2 }
+        guard !cands.isEmpty else { return hint }
+        let mags = cands.map { goertzel(x, sampleRate: sampleRate, freq: $0) }
+        guard let maxm = mags.max(), maxm > 0 else { return hint }
+        for (i, f) in cands.enumerated() where mags[i] > maxm * 0.7 { return f }  // tiefste starke
+        return hint
+    }
 
     static func fingerprint(_ x: [Float], sampleRate: Double, f0: Double, harmonics: Int) -> [Float] {
         var v = [Float](repeating: 0, count: harmonics)
@@ -117,7 +184,7 @@ final class NoteMatcher {
         let n = min(a.count, b.count)
         var dot: Float = 0
         for i in 0..<n { dot += a[i] * b[i] }
-        return dot   // beide L2-normiert → Cosinus
+        return dot
     }
 
     static func loadPCM(url: URL) -> (samples: [Float], sampleRate: Double)? {
