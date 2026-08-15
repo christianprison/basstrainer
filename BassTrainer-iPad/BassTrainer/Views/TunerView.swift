@@ -25,6 +25,10 @@ struct TunerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .onChange(of: tuner.detected) { _, new in timeline.setDetected(new) }
+        .onAppear {
+            timeline.start()               // Zeitstrahl läuft durchgehend (Raster scrollt mit)
+            if !metro.isRunning { metro.start() }   // Metronom per Default an
+        }
         .onDisappear { stopAll() }
     }
 
@@ -101,9 +105,11 @@ struct TunerView: View {
 
     private func toggleDetection() {
         if tuner.isRunning {
-            tuner.stop(); timeline.stop()
+            tuner.stop()                 // Mikro aus; Zeitstrahl läuft für die Anzeige weiter
         } else {
-            tuner.start(); timeline.start()
+            timeline.clear()             // frischer Verlauf
+            timeline.start()             // (falls noch nicht) Display-Loop läuft
+            tuner.start()
         }
     }
 

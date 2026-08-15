@@ -18,6 +18,9 @@ struct NoteSegment: Identifiable {
 final class NoteTimelineModel: ObservableObject {
     let window: Double = 7            // sichtbare Sekunden
 
+    /// Zählt bei jedem 30-Hz-Tick hoch → treibt den Live-Redraw des Canvas.
+    @Published private(set) var frame = 0
+
     private(set) var segments: [NoteSegment] = []
     private var current: NoteSegment?
     private var latest: DetectedNote?
@@ -34,9 +37,9 @@ final class NoteTimelineModel: ObservableObject {
     /// Vom View bei jeder Erkennungsänderung gesetzt.
     func setDetected(_ d: DetectedNote?) { latest = d }
 
+    /// Startet den Display-/Erkennungs-Loop (läuft, solange die Ansicht offen ist).
     func start() {
-        stopTimer()
-        segments.removeAll(); current = nil
+        guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -47,9 +50,13 @@ final class NoteTimelineModel: ObservableObject {
         if let c = current { segments.append(c); current = nil }
     }
 
+    /// Verlauf leeren (bei „Start" einer neuen Erkennung).
+    func clear() { segments.removeAll(); current = nil }
+
     private func stopTimer() { timer?.invalidate(); timer = nil }
 
     private func tick() {
+        defer { frame &+= 1 }
         let now = CACurrentMediaTime()
         if let d = latest, let pos = position(for: d) {
             lastValidHost = now
@@ -128,9 +135,9 @@ struct TabTimelineView: View {
     private let strings: [BassString] = [.g, .d, .a, .e, .b]
 
     var body: some View {
-        TimelineView(.animation) { _ in
-            Canvas { ctx, size in draw(ctx, size) }
-        }
+        // Abhängigkeit vom 30-Hz-Frame-Zähler → Canvas wird live neu gezeichnet.
+        let _ = model.frame
+        Canvas { ctx, size in draw(ctx, size) }
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(.separator), lineWidth: 1))
     }
