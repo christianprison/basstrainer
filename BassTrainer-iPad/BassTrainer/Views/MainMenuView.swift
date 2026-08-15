@@ -80,7 +80,7 @@ private struct MenuLevelView: View {
         case .todayPlan:
             TodayView()
         case .tuner:
-            TunerView()
+            NoteRecognizerView()
         case .precisionOctaves:
             PrecisionOctavesView()
         case .songsList:

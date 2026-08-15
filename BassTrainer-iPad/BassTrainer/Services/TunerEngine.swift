@@ -33,6 +33,16 @@ final class TunerEngine: ObservableObject {
     private let engine = AVAudioEngine()
     private var detector = PitchDetector()
 
+    /// Callback, wenn ein Ton stabil gehalten wird: (Eingangsfenster, SampleRate, f0).
+    /// Für die Sample-Vergleichs-Erkennung.
+    var onNoteHeld: ((_ samples: [Float], _ sampleRate: Double, _ frequency: Double) -> Void)?
+    private var lastWindow: [Float] = []
+    private var lastWindowSR: Double = 48000
+    private var holdPitch: Int?
+    private var holdCount = 0
+    private var emitted = false
+    private let holdGateRMS: Float = 0.02
+
     /// Analysis window. ~85 ms at 48 kHz — enough periods for low B (~31 Hz).
     private let analysisSize = 4096
     private var ringBuffer: [Float] = []
@@ -162,6 +172,8 @@ final class TunerEngine: ObservableObject {
         guard ringBuffer.count >= analysisSize, !detectionInFlight else { return }
 
         let window = Array(ringBuffer.suffix(analysisSize))
+        lastWindow = window
+        lastWindowSR = sampleRate
         // Slide forward, keeping 50% overlap for responsiveness.
         if ringBuffer.count > analysisSize / 2 {
             ringBuffer.removeFirst(ringBuffer.count - analysisSize / 2)
@@ -177,8 +189,17 @@ final class TunerEngine: ObservableObject {
                 self.level = min(rms * 6, 1) // scale for a usable meter
                 if let result {
                     self.detected = Self.makeNote(frequency: result.frequency, clarity: result.clarity)
+                    // Stabil gehaltenen Ton einmalig als Capture melden.
+                    let mrounded = Int((69.0 + 12.0 * log2(result.frequency / 440.0)).rounded())
+                    if self.holdPitch == mrounded { self.holdCount += 1 }
+                    else { self.holdPitch = mrounded; self.holdCount = 1; self.emitted = false }
+                    if !self.emitted, self.holdCount >= 3, rms > self.holdGateRMS {
+                        self.emitted = true
+                        self.onNoteHeld?(self.lastWindow, self.lastWindowSR, result.frequency)
+                    }
                 } else {
                     self.detected = nil
+                    self.holdPitch = nil; self.holdCount = 0; self.emitted = false
                 }
                 self.detectionInFlight = false
             }

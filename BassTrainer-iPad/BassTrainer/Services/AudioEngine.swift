@@ -104,6 +104,21 @@ final class AudioEngine: ObservableObject {
         FileManager.default.fileExists(atPath: cachedFileURL(for: key).path)
     }
 
+    /// Stellt sicher, dass das Sample lokal vorliegt (lädt bei Bedarf) und
+    /// liefert die Datei-URL – für den Sample-Vergleich der Noten-Erkennung.
+    func ensureSample(key: String) async -> URL? {
+        let url = cachedFileURL(for: key)
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        guard let urlStr = audioSources[key], let remote = URL(string: urlStr) else { return nil }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: remote)
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Preload
 
     func preload() async {
