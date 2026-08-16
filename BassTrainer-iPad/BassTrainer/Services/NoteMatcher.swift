@@ -135,7 +135,7 @@ final class NoteMatcher {
 
     /// Oktav-Korrektur: ist die Subokta­ve ähnlich stark, liegt die echte
     /// Grundfrequenz tiefer (behebt Oktav-zu-hoch-Fehler der Pitch-Erkennung).
-    static func refineF0(_ x: [Float], sampleRate: Double, f0: Double) -> Double {
+    nonisolated static func refineF0(_ x: [Float], sampleRate: Double, f0: Double) -> Double {
         var f = f0
         for _ in 0..<2 {
             let half = f / 2
@@ -149,7 +149,7 @@ final class NoteMatcher {
 
     /// Sample-Grundfrequenz robust bestimmen (nur um den Hinweis herum, damit
     /// keine Oktavfehler entstehen).
-    static func measureF0(_ x: [Float], sampleRate: Double, hint: Double) -> Double {
+    nonisolated static func measureF0(_ x: [Float], sampleRate: Double, hint: Double) -> Double {
         let cands = [hint / 2, hint, hint * 2].filter { $0 > 25 && $0 < sampleRate / 2 }
         guard !cands.isEmpty else { return hint }
         let mags = cands.map { goertzel(x, sampleRate: sampleRate, freq: $0) }
@@ -158,7 +158,7 @@ final class NoteMatcher {
         return hint
     }
 
-    static func fingerprint(_ x: [Float], sampleRate: Double, f0: Double, harmonics: Int) -> [Float] {
+    nonisolated static func fingerprint(_ x: [Float], sampleRate: Double, f0: Double, harmonics: Int) -> [Float] {
         var v = [Float](repeating: 0, count: harmonics)
         for k in 1...harmonics {
             let f = f0 * Double(k)
@@ -170,7 +170,7 @@ final class NoteMatcher {
         return v
     }
 
-    static func goertzel(_ x: [Float], sampleRate: Double, freq: Double) -> Float {
+    nonisolated static func goertzel(_ x: [Float], sampleRate: Double, freq: Double) -> Float {
         let w = 2 * Double.pi * freq / sampleRate
         let c = 2 * cos(w)
         var s1 = 0.0, s2 = 0.0
@@ -180,14 +180,14 @@ final class NoteMatcher {
         return Float(sqrt(real * real + imag * imag) / Double(max(1, x.count)))
     }
 
-    static func cosine(_ a: [Float], _ b: [Float]) -> Float {
+    nonisolated static func cosine(_ a: [Float], _ b: [Float]) -> Float {
         let n = min(a.count, b.count)
         var dot: Float = 0
         for i in 0..<n { dot += a[i] * b[i] }
         return dot
     }
 
-    static func loadPCM(url: URL) -> (samples: [Float], sampleRate: Double)? {
+    nonisolated static func loadPCM(url: URL) -> (samples: [Float], sampleRate: Double)? {
         guard let file = try? AVAudioFile(forReading: url) else { return nil }
         let fmt = file.processingFormat
         let frames = AVAudioFrameCount(file.length)
