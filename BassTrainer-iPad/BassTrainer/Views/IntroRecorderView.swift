@@ -612,6 +612,7 @@ final class IntroRecorderViewModel: ObservableObject {
     private let repo = IntroRepository()
     private let audio = AudioEngine()
     private let matcher = NoteMatcher()   // gelernte Lagen-Erkennung (ohne Feedback)
+    private let pitchDetector = PitchDetector()   // reale Tonhöhe pro Segment
 
     /// Erkannte Töne der laufenden Aufnahme als Tab-fähige Notenliste.
     var capturedNotes: [IntroNote] {
@@ -755,8 +756,9 @@ final class IntroRecorderViewModel: ObservableObject {
         // Wo der gelernte Erkenner Daten hat: dessen wahrscheinlichste Lage nehmen
         // (gleicher Algorithmus wie die Noten-Erkennung, nur ohne Feedback).
         for (i, c) in sorted.enumerated() where i < result.count {
-            guard let seg = segmentAround(time: c.time) else { continue }
-            let f0 = BassIntro.frequency(forMidi: c.midi)
+            let nextTime = i + 1 < sorted.count ? sorted[i + 1].time : nil
+            guard let seg = segmentAround(time: c.time, until: nextTime) else { continue }
+            let f0 = measuredF0(seg, fallbackMidi: c.midi)
             let (cands, _) = matcher.rank(segment: seg, sampleRate: recordedSampleRate, f0: f0, technique: .fingered)
             if let top = cands.first, top.samples > 0 {
                 result[i].string = top.string
@@ -767,14 +769,28 @@ final class IntroRecorderViewModel: ObservableObject {
         notes = result
     }
 
-    /// ~450 ms Audiosegment ab dem Anschlagzeitpunkt (für die Merkmalsextraktion).
-    private func segmentAround(time: Double) -> [Float]? {
+    /// Audiosegment ab dem Anschlagzeitpunkt (für die Merkmalsextraktion).
+    /// Endet spätestens ~30 ms vor dem nächsten Anschlag, damit die Hüllkurve
+    /// nicht in den Folgeton läuft (max. 450 ms).
+    private func segmentAround(time: Double, until nextTime: Double?) -> [Float]? {
         let sr = recordedSampleRate
         let startIdx = Int((time - recordedStartTime) * sr)
         guard startIdx >= 0, startIdx < recordedSamples.count else { return nil }
-        let endIdx = min(recordedSamples.count, startIdx + Int(sr * 0.45))
-        guard endIdx > startIdx + 512 else { return nil }
+        var endIdx = min(recordedSamples.count, startIdx + Int(sr * 0.45))
+        if let nt = nextTime {
+            let cut = Int((nt - recordedStartTime) * sr) - Int(sr * 0.03)
+            if cut > startIdx + 1024 { endIdx = min(endIdx, cut) }
+        }
+        guard endIdx > startIdx + 1024 else { return nil }
         return Array(recordedSamples[startIdx..<endIdx])
+    }
+
+    /// Reale Tonhöhe des Segments (YIN). Nur feine Verstimmung übernehmen –
+    /// Oktav-/Obertonsprünge verwerfen und auf die MIDI-Tonhöhe zurückfallen.
+    private func measuredF0(_ seg: [Float], fallbackMidi: Int) -> Double {
+        let ideal = BassIntro.frequency(forMidi: fallbackMidi)
+        guard let r = pitchDetector.detect(seg, sampleRate: recordedSampleRate), r.frequency > 20 else { return ideal }
+        return abs(1200 * log2(r.frequency / ideal)) < 100 ? r.frequency : ideal
     }
 
     private func makeNote(idx: Int, midi: Int, beat: Double) -> IntroNote {
