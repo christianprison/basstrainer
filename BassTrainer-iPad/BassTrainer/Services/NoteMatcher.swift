@@ -161,8 +161,14 @@ final class NoteMatcher: ObservableObject {
         }
         let hnorm = l2norm(harm)
         // Helligkeit (spektraler Schwerpunkt über die Obertöne, 0…1).
-        let hsum = hnorm.reduce(0, +)
-        let centroid = hsum > 0 ? (1...harmonics).reduce(0.0) { $0 + Double($1) * hnorm[$1 - 1] } / hsum : 0
+        var hsum = 0.0
+        var weighted = 0.0
+        for k in 1...harmonics {
+            let m = hnorm[k - 1]
+            hsum += m
+            weighted += Double(k) * m
+        }
+        let centroid = hsum > 0 ? weighted / hsum : 0.0
         let centroidNorm = centroid / Double(harmonics)
         // Relative Hüllkurve über das ganze Segment (auf Peak normiert).
         var env = [Double](repeating: 0, count: envFrames)
@@ -177,7 +183,10 @@ final class NoteMatcher: ObservableObject {
         }
         let peak = env.max() ?? 1
         if peak > 0 { for i in env.indices { env[i] /= peak } }
-        return hnorm + env + [centroidNorm]
+        var out: [Double] = hnorm
+        out.append(contentsOf: env)
+        out.append(centroidNorm)
+        return out
     }
 
     nonisolated static func goertzel(_ x: [Float], sampleRate: Double, freq: Double) -> Float {
