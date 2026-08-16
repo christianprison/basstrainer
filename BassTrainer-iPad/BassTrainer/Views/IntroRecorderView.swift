@@ -176,23 +176,7 @@ struct IntroRecorderView: View {
                     }
                     .padding(.horizontal)
                 }
-                VStack(spacing: 4) {
-                    HStack {
-                        Label("Aufnahme-Tempo", systemImage: "metronome").font(.subheadline)
-                        Spacer()
-                        if let orig = vm.selectedSong?.bpm, orig > 0 {
-                            Text("\(Int(vm.tempo)) BPM · \(Int(vm.tempo / Double(orig) * 100))%")
-                                .font(.caption).monospacedDigit().foregroundColor(.secondary)
-                            Button("Original") { vm.tempo = Double(orig) }.font(.caption)
-                        } else {
-                            Text("\(Int(vm.tempo)) BPM").font(.caption).monospacedDigit().foregroundColor(.secondary)
-                        }
-                    }
-                    Slider(value: $vm.tempo, in: 30...240, step: 1)
-                    Text("Für schnelle Anfänge langsamer aufnehmen – die erkannten Beat-Positionen bleiben korrekt.")
-                        .font(.caption2).foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 20)
+                tempoCard
                 detectionSettings
                 if !vm.notes.isEmpty {
                     Button("Vorhandene bearbeiten") { vm.phase = .edit }.font(.caption)
@@ -200,6 +184,41 @@ struct IntroRecorderView: View {
             }
             .padding()
         }
+    }
+
+    // Tempo-Karte: prominent, mit Schnellwahl zum Langsamer-Einspielen.
+    private let tempoPresets = [100, 75, 50, 33, 25]
+
+    private var tempoCard: some View {
+        let orig = Double(vm.selectedSong?.bpm ?? 0)
+        let base = orig > 0 ? orig : 100
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Aufnahme-Tempo", systemImage: "metronome").font(.subheadline).bold()
+                Spacer()
+                Text("\(Int(vm.tempo)) BPM").font(.subheadline).monospacedDigit().bold()
+                if orig > 0 {
+                    Text("· \(Int((vm.tempo / orig * 100).rounded())) %")
+                        .font(.caption).monospacedDigit().foregroundColor(.secondary)
+                }
+            }
+            HStack(spacing: 8) {
+                ForEach(tempoPresets, id: \.self) { pct in
+                    let target = min(240, max(20, (base * Double(pct) / 100).rounded()))
+                    Button { vm.tempo = target } label: {
+                        Text("\(pct) %").font(.caption).monospacedDigit().frame(maxWidth: .infinity).padding(.vertical, 6)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Int(vm.tempo) == Int(target) ? .accentColor : .secondary)
+                }
+            }
+            Slider(value: $vm.tempo, in: 20...240, step: 1)
+            Text("Für schnelle Anfänge langsamer einspielen – Einzähler und Klick laufen im gewählten Tempo, die erkannten Beat-Positionen bleiben korrekt.")
+                .font(.caption2).foregroundColor(.secondary)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Aufnahme
@@ -212,6 +231,7 @@ struct IntroRecorderView: View {
                 .foregroundColor(countingIn ? .secondary : .red)
             Text(countingIn ? "Einzähler … (\(vm.countInBeats) Schläge)" : "Spiele die ersten Töne")
                 .font(.title2).foregroundColor(countingIn ? .secondary : .primary)
+            Text("Tempo \(Int(vm.tempo)) BPM").font(.caption).monospacedDigit().foregroundColor(.secondary)
             ProgressView(value: Double(vm.level), total: 1).tint(.accentColor).padding(.horizontal, 60)
             if !countingIn {
                 Text("Wird aufgezeichnet – Erkennung folgt nach dem Stopp.")
@@ -622,7 +642,7 @@ final class IntroRecorderViewModel: ObservableObject {
 
     var hasRecording: Bool { !recordedSamples.isEmpty }
 
-    private var beatDur: Double { 60.0 / max(40, tempo) }
+    private var beatDur: Double { 60.0 / max(20, tempo) }
 
     func loadSongs() async {
         await catalog.load()
