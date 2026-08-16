@@ -38,6 +38,8 @@ final class TunerEngine: ObservableObject {
     var onNoteHeld: ((_ samples: [Float], _ sampleRate: Double, _ frequency: Double) -> Void)?
     private var lastWindow: [Float] = []
     private var lastWindowSR: Double = 48000
+    private var captureRing: [Float] = []      // ~500 ms für Hüllkurven-Merkmale
+    private var captureRingSR: Double = 48000
     private var holdPitch: Int?
     private var holdCount = 0
     private var emitted = false
@@ -165,6 +167,12 @@ final class TunerEngine: ObservableObject {
     }
 
     private func accumulate(_ chunk: [Float], sampleRate: Double) {
+        // Längerer Capture-Ring (~500 ms) für die Hüllkurven-Merkmale.
+        captureRing.append(contentsOf: chunk)
+        captureRingSR = sampleRate
+        let capMax = Int(sampleRate * 0.5)
+        if captureRing.count > capMax { captureRing.removeFirst(captureRing.count - capMax) }
+
         ringBuffer.append(contentsOf: chunk)
         // Keep memory bounded.
         if ringBuffer.count > analysisSize * 3 {
@@ -196,7 +204,7 @@ final class TunerEngine: ObservableObject {
                     else { self.holdPitch = mrounded; self.holdCount = 1; self.emitted = false }
                     if !self.emitted, self.holdCount >= 3, rms > self.holdGateRMS {
                         self.emitted = true
-                        self.onNoteHeld?(self.lastWindow, self.lastWindowSR, result.frequency)
+                        self.onNoteHeld?(self.captureRing, self.captureRingSR, result.frequency)
                     }
                 } else {
                     self.detected = nil
