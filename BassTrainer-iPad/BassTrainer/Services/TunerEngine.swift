@@ -194,7 +194,7 @@ final class TunerEngine: ObservableObject {
                     let mrounded = Int((69.0 + 12.0 * log2(result.frequency / 440.0)).rounded())
                     if self.holdPitch == mrounded { self.holdCount += 1 }
                     else { self.holdPitch = mrounded; self.holdCount = 1; self.emitted = false }
-                    if !self.emitted, self.holdCount >= 3, rms > self.holdGateRMS {
+                    if !self.emitted, self.holdCount >= 2, rms > self.holdGateRMS {
                         self.emitted = true
                         self.onNoteHeld?(self.lastWindow, self.lastWindowSR, result.frequency)
                     }

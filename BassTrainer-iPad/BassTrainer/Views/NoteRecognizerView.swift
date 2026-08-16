@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Noten-Erkennung per Sample-Vergleich: Ton spielen → der Trainer schlägt die
 /// wahrscheinlichsten Saiten/Bünde vor (+ „Nichts davon") → du wählst aus.
@@ -9,6 +10,7 @@ struct NoteRecognizerView: View {
     var body: some View {
         VStack(spacing: 20) {
             header
+            vuMeter
             Spacer(minLength: 0)
             content
             Spacer(minLength: 0)
@@ -35,6 +37,27 @@ struct NoteRecognizerView: View {
             Button { vm.stop(); dismiss() } label: {
                 Image(systemName: "xmark.circle.fill").font(.title2).foregroundColor(.secondary)
             }
+        }
+    }
+
+    /// VU-Meter zum Einstellen des Gains (grün → gelb → rot).
+    private var vuMeter: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Eingangspegel – Gain so justieren, dass laute Töne knapp unter Rot bleiben")
+                .font(.caption2).foregroundColor(.secondary)
+            GeometryReader { geo in
+                let lvl = CGFloat(min(1, max(0, vm.level)))
+                let color: Color = vm.level < 0.7 ? .green : (vm.level < 0.9 ? .yellow : .red)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 5).fill(Color(.tertiarySystemFill))
+                    RoundedRectangle(cornerRadius: 5).fill(color)
+                        .frame(width: geo.size.width * lvl)
+                    // Marker bei ~90 % (Übersteuerungsgrenze)
+                    Rectangle().fill(Color.red.opacity(0.6)).frame(width: 2)
+                        .position(x: geo.size.width * 0.9, y: geo.size.height / 2)
+                }
+            }
+            .frame(height: 16)
         }
     }
 
@@ -115,11 +138,17 @@ final class NoteRecognizerViewModel: ObservableObject {
     @Published var capturedNote: String = ""
     @Published var confirmed: String?
     @Published var isListening = false
+    @Published var level: Float = 0
 
     private let tuner = TunerEngine()
     private let audio = AudioEngine()
     private lazy var matcher = NoteMatcher(audio: audio)
     private var analyzing = false
+
+    init() {
+        // Eingangspegel für das VU-Meter spiegeln.
+        tuner.$level.receive(on: DispatchQueue.main).assign(to: &$level)
+    }
 
     func start() {
         tuner.onNoteHeld = { [weak self] samples, sr, f0 in

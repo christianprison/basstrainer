@@ -57,6 +57,7 @@ final class NoteMatcher {
     private var cache: [String: (fp: [Float], f0: Double)] = [:]
     private var lastInputFP: [Float] = []
     private let harmonics = 8
+    private let sampleDetector = PitchDetector()   // YIN: oktavstabile Sample-Tonhöhe
 
     init(audio: AudioEngine) { self.audio = audio }
 
@@ -83,20 +84,23 @@ final class NoteMatcher {
     /// Bestätigte Auswahl lernen (Fingerprint des letzten Tons → Position).
     func confirm(key: String) { memory.add(lastInputFP, key: key) }
 
-    func rank(input: [Float], sampleRate: Double, f0: Double, maxCandidates: Int = 4)
+    func rank(input: [Float], sampleRate: Double, f0: Double, maxCandidates: Int = 8)
         async -> (candidates: [ScoredCandidate], bestScore: Double) {
         guard f0 > 20, input.count > 256 else { return ([], 0) }
-        let refined = Self.refineF0(input, sampleRate: sampleRate, f0: f0)
-        let inFP = Self.fingerprint(input, sampleRate: sampleRate, f0: refined, harmonics: harmonics)
+        let inFP = Self.fingerprint(input, sampleRate: sampleRate, f0: f0, harmonics: harmonics)
         lastInputFP = inFP
 
-        // Grobes Netz über ~1 Oktave (fängt oktavversetzte Modellfrequenzen),
-        // danach exakt über die GEMESSENE Sample-Tonhöhe filtern.
-        let loose = allPositions.filter { abs(1200 * log2(refined / $0.freq)) < 1300 }
+        // Vorfilter: Positionen, deren Modell- ODER halbe Modellfrequenz nahe am
+        // gespielten Ton liegt (fängt die echten Lagen unabhängig von der
+        // Sample-Oktave, ohne ~20 Samples zu messen). Danach exakt über die per
+        // YIN gemessene Sample-Tonhöhe.
+        let loose = allPositions.filter {
+            abs(1200 * log2(f0 / $0.freq)) < 150 || abs(1200 * log2(f0 / ($0.freq / 2))) < 150
+        }
         var scored: [ScoredCandidate] = []
         for c in loose {
             guard let s = await sampleData(c) else { continue }
-            guard abs(1200 * log2(refined / s.f0)) < 45 else { continue }   // gleiche Tonhöhe
+            guard abs(1200 * log2(f0 / s.f0)) < 50 else { continue }   // gleiche Tonhöhe (YIN)
             let timbre = Double(Self.cosine(inFP, s.fp))
             let userSim = Double(memory.bestSim(inFP, key: c.key))
             let sim = userSim >= 0 ? 0.5 * timbre + 0.5 * userSim : timbre
@@ -104,6 +108,7 @@ final class NoteMatcher {
                                           key: c.key, noteName: c.noteName,
                                           probability: 0, score: max(0, sim)))
         }
+        // ALLE passenden Lagen anzeigen (nach Wahrscheinlichkeit sortiert).
         scored.sort { $0.score > $1.score }
         var top = Array(scored.prefix(maxCandidates))
         let best = top.first?.score ?? 0
@@ -114,17 +119,18 @@ final class NoteMatcher {
         return (top, best)
     }
 
-    /// Fingerprint + gemessene Grundfrequenz eines Samples (gecacht).
+    /// Fingerprint + (YIN-)gemessene Grundfrequenz eines Samples (gecacht).
     private func sampleData(_ c: Pos) async -> (fp: [Float], f0: Double)? {
         if let cached = cache[c.key] { return cached }
         guard let url = await audio.ensureSample(key: c.key),
               let pcm = Self.loadPCM(url: url) else { return nil }
         let sr = pcm.sampleRate
         let start = min(max(0, pcm.samples.count - 1), Int(sr * 0.12))
-        let end = min(pcm.samples.count, start + Int(sr * 0.30))
-        guard end > start + 256 else { return nil }
+        let end = min(pcm.samples.count, start + Int(sr * 0.35))
+        guard end > start + 1024 else { return nil }
         let win = Array(pcm.samples[start..<end])
-        let f0 = Self.measureF0(win, sampleRate: sr, hint: c.freq)
+        // YIN ist oktavstabil (kein Sprung auf die 2. Harmonische).
+        let f0 = sampleDetector.detect(win, sampleRate: sr)?.frequency ?? c.freq
         let fp = Self.fingerprint(win, sampleRate: sr, f0: f0, harmonics: harmonics)
         let res = (fp, f0)
         cache[c.key] = res
