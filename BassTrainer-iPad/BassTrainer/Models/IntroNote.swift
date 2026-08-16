@@ -30,6 +30,13 @@ struct IntroNote: Identifiable, Codable, Equatable {
         self.noteName = noteName
     }
 
+    /// Anzuzeigende Lage: bevorzugt die gespeicherte/erkannte Saite+Bund,
+    /// sonst der naive Vorschlag aus der Tonhöhe.
+    var displayPosition: (string: Int, fret: Int)? {
+        if let s = string, let f = fret { return (s, f) }
+        return BassIntro.suggestStringFret(forMidi: midi)
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = UUID()

@@ -295,7 +295,7 @@ struct IntroRecorderView: View {
             Text("\(note.idx)").font(.caption).monospacedDigit().foregroundColor(.secondary).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(BassIntro.noteName(forMidi: note.midi)).font(.headline)
-                if let sf = BassIntro.suggestStringFret(forMidi: note.midi) {
+                if let sf = note.displayPosition {
                     Text("\(BassIntro.stringName[sf.string] ?? "?")-Saite, Bund \(sf.fret)").font(.caption2).foregroundColor(.secondary)
                 }
             }
@@ -430,7 +430,7 @@ struct BassTabView: View {
 
                 // Noten
                 for note in notes {
-                    guard let sf = BassIntro.suggestStringFret(forMidi: note.midi) else { continue }
+                    guard let sf = note.displayPosition else { continue }
                     let nx = x(note.beat)
                     let ny = rowY(sf.string)
                     let dur = note.durationBeats ?? 0.25
