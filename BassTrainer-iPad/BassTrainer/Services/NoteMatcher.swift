@@ -54,10 +54,12 @@ final class NoteMatcher {
     let memory = RecognitionMemory()
 
     private let audio: AudioEngine
-    private var cache: [String: (fp: [Float], f0: Double)] = [:]
+    private var cache: [String: [Float]] = [:]          // Sample-Fingerprint je Key
     private var lastInputFP: [Float] = []
     private let harmonics = 8
-    private let sampleDetector = PitchDetector()   // YIN: oktavstabile Sample-Tonhöhe
+
+    /// Reale offene Saiten eines 5-Saiters (klingend): B0/E1/A1/D2/G2.
+    private let openRealHz: [Int: Double] = [1: 30.87, 2: 41.20, 3: 55.00, 4: 73.42, 5: 98.00]
 
     init(audio: AudioEngine) { self.audio = audio }
 
@@ -66,16 +68,19 @@ final class NoteMatcher {
         let freq: Double; let key: String; let noteName: String
     }
 
+    /// Alle Positionen (5 Saiten × Bund 0…12) mit ihrer DETERMINISTISCHEN realen
+    /// Tonhöhe (aus Saite+Bund) – kein DSP-Messen, daher keine Oktavfehler.
     private lazy var allPositions: [Pos] = {
         let map: [(Int, BassString)] = [(1, .b), (2, .e), (3, .a), (4, .d), (5, .g)]
         var res: [Pos] = []
         for (sid, bs) in map {
+            guard let open = openRealHz[sid] else { continue }
             for f in 0...12 {
-                let pos = FretPosition(string: bs, fret: f)
-                let freq = pos.frequency
+                let freq = open * pow(2.0, Double(f) / 12.0)
                 let midi = Int((69.0 + 12.0 * log2(freq / 440.0)).rounded())
                 res.append(Pos(string: sid, fret: f, midi: midi, freq: freq,
-                               key: pos.audioKey, noteName: BassIntro.noteName(forMidi: midi)))
+                               key: FretPosition(string: bs, fret: f).audioKey,
+                               noteName: BassIntro.noteName(forMidi: midi)))
             }
         }
         return res
@@ -90,25 +95,21 @@ final class NoteMatcher {
         let inFP = Self.fingerprint(input, sampleRate: sampleRate, f0: f0, harmonics: harmonics)
         lastInputFP = inFP
 
-        // Vorfilter: Positionen, deren Modell- ODER halbe Modellfrequenz nahe am
-        // gespielten Ton liegt (fängt die echten Lagen unabhängig von der
-        // Sample-Oktave, ohne ~20 Samples zu messen). Danach exakt über die per
-        // YIN gemessene Sample-Tonhöhe.
-        let loose = allPositions.filter {
-            abs(1200 * log2(f0 / $0.freq)) < 150 || abs(1200 * log2(f0 / ($0.freq / 2))) < 150
-        }
+        // Kandidaten = ALLE Positionen mit der gleichen realen Tonhöhe wie der
+        // gespielte Ton (deterministisch aus Saite/Bund) → alle Lagen, richtige
+        // Oktave, unabhängig davon ob ein Sample geladen werden konnte.
+        let cands = allPositions.filter { abs(1200 * log2(f0 / $0.freq)) < 50 }
         var scored: [ScoredCandidate] = []
-        for c in loose {
-            guard let s = await sampleData(c) else { continue }
-            guard abs(1200 * log2(f0 / s.f0)) < 50 else { continue }   // gleiche Tonhöhe (YIN)
-            let timbre = Double(Self.cosine(inFP, s.fp))
+        for c in cands {
+            // Klangvergleich nur für die Reihenfolge; fehlt das Sample → neutral.
+            let sfp = await sampleFingerprint(c)
+            let timbre = sfp != nil ? Double(Self.cosine(inFP, sfp!)) : 0.5
             let userSim = Double(memory.bestSim(inFP, key: c.key))
             let sim = userSim >= 0 ? 0.5 * timbre + 0.5 * userSim : timbre
             scored.append(ScoredCandidate(string: c.string, fret: c.fret, midi: c.midi,
                                           key: c.key, noteName: c.noteName,
-                                          probability: 0, score: max(0, sim)))
+                                          probability: 0, score: max(0.001, sim)))
         }
-        // ALLE passenden Lagen anzeigen (nach Wahrscheinlichkeit sortiert).
         scored.sort { $0.score > $1.score }
         var top = Array(scored.prefix(maxCandidates))
         let best = top.first?.score ?? 0
@@ -119,22 +120,19 @@ final class NoteMatcher {
         return (top, best)
     }
 
-    /// Fingerprint + (YIN-)gemessene Grundfrequenz eines Samples (gecacht).
-    private func sampleData(_ c: Pos) async -> (fp: [Float], f0: Double)? {
+    /// Sample-Fingerprint bei der bekannten realen Tonhöhe der Position (gecacht).
+    private func sampleFingerprint(_ c: Pos) async -> [Float]? {
         if let cached = cache[c.key] { return cached }
         guard let url = await audio.ensureSample(key: c.key),
               let pcm = Self.loadPCM(url: url) else { return nil }
         let sr = pcm.sampleRate
         let start = min(max(0, pcm.samples.count - 1), Int(sr * 0.12))
-        let end = min(pcm.samples.count, start + Int(sr * 0.35))
-        guard end > start + 1024 else { return nil }
+        let end = min(pcm.samples.count, start + Int(sr * 0.30))
+        guard end > start + 256 else { return nil }
         let win = Array(pcm.samples[start..<end])
-        // YIN ist oktavstabil (kein Sprung auf die 2. Harmonische).
-        let f0 = sampleDetector.detect(win, sampleRate: sr)?.frequency ?? c.freq
-        let fp = Self.fingerprint(win, sampleRate: sr, f0: f0, harmonics: harmonics)
-        let res = (fp, f0)
-        cache[c.key] = res
-        return res
+        let fp = Self.fingerprint(win, sampleRate: sr, f0: c.freq, harmonics: harmonics)
+        cache[c.key] = fp
+        return fp
     }
 
     // MARK: - DSP
