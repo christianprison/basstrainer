@@ -591,6 +591,7 @@ final class IntroRecorderViewModel: ObservableObject {
     private let recorder = IntroRecorder()
     private let repo = IntroRepository()
     private let audio = AudioEngine()
+    private let matcher = NoteMatcher()   // gelernte Lagen-Erkennung (ohne Feedback)
 
     /// Erkannte Töne der laufenden Aufnahme als Tab-fähige Notenliste.
     var capturedNotes: [IntroNote] {
@@ -626,6 +627,7 @@ final class IntroRecorderViewModel: ObservableObject {
     func loadSongs() async {
         await catalog.load()
         songs = catalog.songs
+        await matcher.loadFromCloud()   // gelernte Fingerabdrücke für die Lagen-Zuordnung
     }
 
     func pick(_ song: CatalogSong) {
@@ -724,14 +726,35 @@ final class IntroRecorderViewModel: ObservableObject {
         var result = sorted.enumerated().map { i, c in
             makeNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur))
         }
-        // Lagen-optimierte Zuweisung: minimale Bundabstände über die ganze Folge.
+        // Basis: minimale Bundabstände über die ganze Folge.
         let pos = BassIntro.optimalPositions(forMidis: result.map { $0.midi })
         for i in result.indices where i < pos.count {
             result[i].string = pos[i]?.string
             result[i].fret = pos[i]?.fret
         }
+        // Wo der gelernte Erkenner Daten hat: dessen wahrscheinlichste Lage nehmen
+        // (gleicher Algorithmus wie die Noten-Erkennung, nur ohne Feedback).
+        for (i, c) in sorted.enumerated() where i < result.count {
+            guard let seg = segmentAround(time: c.time) else { continue }
+            let f0 = BassIntro.frequency(forMidi: c.midi)
+            let (cands, _) = matcher.rank(segment: seg, sampleRate: recordedSampleRate, f0: f0, technique: .fingered)
+            if let top = cands.first, top.samples > 0 {
+                result[i].string = top.string
+                result[i].fret = top.fret
+            }
+        }
         applyDurations(&result)
         notes = result
+    }
+
+    /// ~450 ms Audiosegment ab dem Anschlagzeitpunkt (für die Merkmalsextraktion).
+    private func segmentAround(time: Double) -> [Float]? {
+        let sr = recordedSampleRate
+        let startIdx = Int((time - recordedStartTime) * sr)
+        guard startIdx >= 0, startIdx < recordedSamples.count else { return nil }
+        let endIdx = min(recordedSamples.count, startIdx + Int(sr * 0.45))
+        guard endIdx > startIdx + 512 else { return nil }
+        return Array(recordedSamples[startIdx..<endIdx])
     }
 
     private func makeNote(idx: Int, midi: Int, beat: Double) -> IntroNote {
