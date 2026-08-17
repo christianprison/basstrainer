@@ -67,7 +67,7 @@ struct IntroRecorderView: View {
         case .pickSong:  songPicker
         case .ready:     readyContent
         case .countIn:   recordingContent(countingIn: true)
-        case .recording: recordingContent(countingIn: false)
+        case .recording: liveRecordingContent
         case .analyze:   analyzeContent
         case .edit:      editContent
         case .denied:    deniedContent
@@ -240,6 +240,32 @@ struct IntroRecorderView: View {
             Spacer()
         }
         .padding()
+    }
+
+    // Live-Aufnahme: Tab + Wellenform + Regler direkt beim Einspielen.
+    private var liveRecordingContent: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "record.circle.fill").foregroundColor(.red)
+                    Text("Aufnahme läuft – \(vm.captured.count) Töne").font(.subheadline)
+                    Spacer()
+                    Text("Tempo \(Int(vm.tempo)) BPM").font(.caption).monospacedDigit().foregroundColor(.secondary)
+                }
+                ProgressView(value: Double(vm.level), total: 1).tint(.red)
+                if vm.captured.isEmpty {
+                    Text("Spiele die ersten Töne … (Live-Vorschau, Feinerkennung nach dem Stopp)")
+                        .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                } else {
+                    BassTabView(notes: vm.capturedNotes).padding(.horizontal)
+                }
+                WaveformMeterView(samples: vm.meter).padding(.horizontal)
+                Text("Regler wirken sofort auf die Live-Erkennung – so siehst du direkt, was fehlt oder doppelt kommt.")
+                    .font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+                detectionSettings
+            }
+            .padding()
+        }
     }
 
     // MARK: - Analyse (Offline-Erkennung tweaken)
@@ -673,12 +699,30 @@ final class IntroRecorderViewModel: ObservableObject {
         applyParams()
         recorder.captureRaw = true                       // ganze Spur mitschneiden
         recorder.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
-        recorder.onMeter = nil
-        recorder.onNote = nil                            // Erkennung läuft offline nach dem Stop
+        // Live-Vorschau während der Aufnahme (die präzise Erkennung folgt offline nach dem Stop).
+        recorder.onMeter = { [weak self] env, thr, onset in
+            Task { @MainActor in self?.appendMeter(env, thr, onset) }
+        }
+        recorder.onNote = { [weak self] t, midi, _ in
+            Task { @MainActor in self?.appendLiveNote(time: t, midi: midi) }
+        }
         recorder.start { [weak self] granted in
             guard let self else { return }
             if granted { self.beginCountIn() } else { self.phase = .denied }
         }
+    }
+
+    /// Live erkannter Ton (ab Downbeat) für die Aufnahme-Vorschau.
+    private func appendLiveNote(time: Double, midi: Int) {
+        guard recording, time >= downbeatTime - 0.05 else { return }
+        captured.append((time: time, midi: midi))
+    }
+
+    /// Live-Telemetrie für die Wellenform während der Aufnahme.
+    private func appendMeter(_ env: Float, _ thr: Float, _ onset: Bool) {
+        guard phase == .recording || phase == .countIn else { return }
+        meter.append(DetectionMeterSample(env: env, threshold: thr, onset: onset))
+        if meter.count > 400 { meter.removeFirst(meter.count - 400) }
     }
 
     private func beginCountIn() {
