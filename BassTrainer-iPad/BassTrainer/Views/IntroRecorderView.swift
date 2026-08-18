@@ -644,7 +644,7 @@ final class IntroRecorderViewModel: ObservableObject {
     var capturedNotes: [IntroNote] {
         var arr = captured.enumerated().map { i, c in
             let sf = BassIntro.suggestStringFret(forMidi: c.midi)
-            return IntroNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur),
+            return IntroNote(idx: i + 1, midi: c.midi, beat: q16((c.time - latencySec - downbeatTime) / beatDur),
                              string: sf?.string, fret: sf?.fret, noteName: BassIntro.noteName(forMidi: c.midi))
         }
         applyDurations(&arr)
@@ -670,11 +670,14 @@ final class IntroRecorderViewModel: ObservableObject {
     var hasRecording: Bool { !recordedSamples.isEmpty }
 
     private var beatDur: Double { 60.0 / max(20, tempo) }
+    /// Kalibrierte Eingabe-Latenz (s) – von Onset-Zeiten vor der Beat-Quantisierung abziehen.
+    private var latencySec: Double { CalibrationStore.shared.latencySeconds }
 
     func loadSongs() async {
         await catalog.load()
         songs = catalog.songs
         await matcher.loadFromCloud()   // gelernte Fingerabdrücke für die Lagen-Zuordnung
+        await CalibrationStore.shared.loadIfNeeded()   // kalibrierte Eingabe-Latenz
     }
 
     func pick(_ song: CatalogSong) {
@@ -789,7 +792,7 @@ final class IntroRecorderViewModel: ObservableObject {
     private func buildNotes() {
         let sorted = captured.sorted { $0.time < $1.time }
         var result = sorted.enumerated().map { i, c in
-            makeNote(idx: i + 1, midi: c.midi, beat: q16((c.time - downbeatTime) / beatDur))
+            makeNote(idx: i + 1, midi: c.midi, beat: q16((c.time - latencySec - downbeatTime) / beatDur))
         }
         // Basis: minimale Bundabstände über die ganze Folge.
         let pos = BassIntro.optimalPositions(forMidis: result.map { $0.midi })

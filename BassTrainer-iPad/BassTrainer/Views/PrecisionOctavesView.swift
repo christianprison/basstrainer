@@ -186,6 +186,7 @@ final class PrecisionOctavesViewModel: ObservableObject {
     }
 
     func start() {
+        Task { await CalibrationStore.shared.loadIfNeeded() }
         engine.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
         engine.onOnset = { [weak self] t, _ in Task { @MainActor in self?.evaluateOnset(t) } }
         engine.start { [weak self] granted in
@@ -238,8 +239,10 @@ final class PrecisionOctavesViewModel: ObservableObject {
         }
     }
 
-    private func evaluateOnset(_ time: Double) {
+    private func evaluateOnset(_ rawTime: Double) {
         guard !beats.isEmpty else { return }
+        // Kalibrierte Eingabe-Latenz herausrechnen (Onset kommt systematisch später).
+        let time = rawTime - CalibrationStore.shared.latencySeconds
         var bestId = -1, bestTime = 0.0, bestAbs = Double.infinity
         for b in beats {
             let d = abs(time - b.time)

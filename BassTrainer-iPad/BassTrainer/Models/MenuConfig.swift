@@ -13,6 +13,7 @@ enum MenuMode {
     case repertoireList     // Alle Songs (Tabelle songs)
     case introQuiz          // Songanfänge merken (Abruf-Übung)
     case introRecorder      // Kurator: Song-Anfänge einspielen → DB
+    case latencyCalibration // Timing-Latenz messen (120 BPM, Viertel spielen)
     case curatorSettings    // Kurator-Status / eigene uid
     case help               // In-App-Hilfe
     case practiceClass      // Übungskapitel: alle markierten Stellen einer Kategorie
@@ -103,6 +104,7 @@ enum MenuConfig {
             children: [
                 MenuItem(id: "uebungs-log", label: "Übungs-Log", description: "Was wann geübt – Basis für den späteren KI-Übungsplan", mode: .practiceLog),
                 MenuItem(id: "pitch-detection", label: "Noten-Erkennung", description: "Live-Tonhöhe vom (USB-)Audio-Eingang", mode: .tuner),
+                MenuItem(id: "timing-kalibrierung", label: "Timing kalibrieren", description: "Latenz messen (120 BPM, Viertel spielen) – für Präzision & Aufnahme", mode: .latencyCalibration),
                 MenuItem(id: "intro-recorder", label: "Intro einspielen", description: "Song-Anfänge aufnehmen & in die DB schreiben (Kurator)", mode: .introRecorder),
                 MenuItem(id: "einstellungen", label: "Einstellungen", description: "Kurator-Status / Geräte-ID (uid)", mode: .curatorSettings),
                 MenuItem(id: "hilfe", label: "Hilfe", description: "Troubleshooting & Bedien-Hinweise", mode: .help),
