@@ -7,8 +7,9 @@ enum PlanTarget: Identifiable, Equatable {
     case pentatonic
     case pick
     case precision
+    case technique(TechniqueExercise)
     case practiceClass(PracticeReason, contextOnly: Bool)
-    case songs(SongSource)
+    case songs(SongSource, songID: String?)
 
     var id: String {
         switch self {
@@ -17,8 +18,9 @@ enum PlanTarget: Identifiable, Equatable {
         case .pentatonic:  return "pentatonic"
         case .pick:        return "pick"
         case .precision:   return "precision"
+        case .technique(let ex): return "tech-\(ex.id)"
         case .practiceClass(let r, let ctx): return "pc-\(r.rawValue)-\(ctx ? "ctx" : "all")"
-        case .songs(let s): return "songs-\(s == .setlist ? "set" : "rep")"
+        case .songs(let s, let sid): return "songs-\(s == .setlist ? "set" : "rep")-\(sid ?? "any")"
         }
     }
 
@@ -30,8 +32,9 @@ enum PlanTarget: Identifiable, Equatable {
         case .pentatonic:  return "Pentatonic Shapes"
         case .pick:        return "Pick"
         case .precision:   return "Oktaven"
+        case .technique(let ex): return ex.logLabel
         case .practiceClass(let r, _): return r.label
-        case .songs(let s): return s == .setlist ? "Aktuelle Setlist" : "Alle Songs"
+        case .songs(let s, _): return s == .setlist ? "Aktuelle Setlist" : "Alle Songs"
         }
     }
 }
@@ -81,60 +84,53 @@ final class TodayPlanner: ObservableObject {
         if log.entries.isEmpty { await log.load() }
 
         let picks = rankedProblems(markers: markerStore.markers, setlistIDs: setlistIDs, log: log)
-        // Nur „im Zusammenhang"-Marker (für kurze Sessions als Playalong-Ersatz).
-        let contextPicks = rankedProblems(markers: markerStore.markers.filter { $0.mode == .context },
-                                          setlistIDs: setlistIDs, log: log)
-        let isPick = Calendar.current.component(.weekday, from: Date()) % 2 == 0
 
-        // Problemstellen-Block Nr. i (oder Skalen-Fallback, wenn nicht genug Marker).
+        // Tages-Rotation: jeden Tag andere Technik-/Pentatonik-Übungen.
+        let seed = TechniqueLibrary.dayNumber
+        let todaysTech = TechniqueLibrary.techniquesRotated(seed: seed)
+        let todaysPenta = TechniqueLibrary.pentatonic(seed: seed)
+        let setlistSongs = setlist.songs
+
+        func warmup(_ m: Int) -> PlanBlock {
+            PlanBlock(title: "Warm-up", subtitle: "Chromatic Crawl / Spider zum Klick",
+                      minutes: m, systemImage: "flame.fill", target: .warmup)
+        }
+        func pentaBlock(_ m: Int) -> PlanBlock {
+            PlanBlock(title: "Pentatonik · \(todaysPenta.name)", subtitle: todaysPenta.focus,
+                      minutes: m, systemImage: todaysPenta.systemImage, target: .technique(todaysPenta))
+        }
+        // Problemstellen-Block Nr. i (oder Pentatonik-Fallback, wenn nicht genug Marker).
         func problem(_ i: Int, _ min: Int) -> PlanBlock {
-            guard i < picks.count else {
-                return PlanBlock(title: "Skalen & Griffbrett",
-                                 subtitle: "Pentatonik/Orientierung – frei über den Hals",
-                                 minutes: min, systemImage: "square.grid.3x3.fill", target: .pentatonic)
-            }
+            guard i < picks.count else { return pentaBlock(min) }
             let p = picks[i]
             let daysText = p.days.map { $0 == 0 ? "heute schon geübt" : "zuletzt vor \($0) Tg." } ?? "noch nie geübt"
             return PlanBlock(title: "Problemstellen · \(p.reason.label)",
                              subtitle: "\(p.count) markierte Stellen · \(daysText)",
                              minutes: min, systemImage: p.reason.systemImage, target: .practiceClass(p.reason, contextOnly: false))
         }
-        func warmup(_ m: Int) -> PlanBlock {
-            PlanBlock(title: "Warm-up", subtitle: "Chromatic Crawl / Spider zum Klick",
-                      minutes: m, systemImage: "flame.fill", target: .warmup)
+        // Geführte Technik-Übung (Vorspielen → Einzähler → Nachspielen + Bewertung).
+        func tech(_ i: Int, _ m: Int) -> PlanBlock {
+            guard !todaysTech.isEmpty else { return warmup(m) }
+            let ex = todaysTech[i % todaysTech.count]
+            return PlanBlock(title: "Technik · \(ex.name)", subtitle: ex.focus,
+                             minutes: m, systemImage: ex.systemImage, target: .technique(ex))
         }
-        func fretboard(_ m: Int) -> PlanBlock {
-            PlanBlock(title: "Griffbrett", subtitle: "Pentatonic Shapes – eine Lage",
-                      minutes: m, systemImage: "square.grid.3x3.fill", target: .pentatonic)
-        }
-        func technique(_ m: Int) -> PlanBlock {
-            PlanBlock(title: isPick ? "Technik · Pick-Oktaven" : "Technik · Präzision",
-                      subtitle: "Oktaven zum Klick, progressiv schneller",
-                      minutes: m, systemImage: "bolt.fill", target: isPick ? .pick : .precision)
-        }
-        func play(_ m: Int) -> PlanBlock {
-            PlanBlock(title: "Play-along", subtitle: "Setlist – mitspielen",
-                      minutes: m, systemImage: "music.note.list", target: .songs(.setlist))
-        }
-        // Kurze Sessions: statt freiem Play-along die kritischen Stellen „im
-        // Zusammenhang" (Kontext-Marker); sonst Fallback auf Setlist.
-        func contextPlay(_ m: Int) -> PlanBlock {
-            guard let p = contextPicks.first else { return play(m) }
-            return PlanBlock(title: "Im Zusammenhang · \(p.reason.label)",
-                             subtitle: "\(p.count) kritische Stellen mit Anlauf",
-                             minutes: m, systemImage: "arrow.turn.down.right",
-                             target: .practiceClass(p.reason, contextOnly: true))
+        // Play-along – immer dabei, mit täglich/rotierend wechselndem Setlist-Song.
+        func play(_ m: Int, _ rot: Int) -> PlanBlock {
+            let song = setlistSongs.isEmpty ? nil : setlistSongs[((seed + rot) % setlistSongs.count + setlistSongs.count) % setlistSongs.count]
+            return PlanBlock(title: "Play-along", subtitle: song.map { "Setlist · \($0.name)" } ?? "Setlist – mitspielen",
+                             minutes: m, systemImage: "music.note.list", target: .songs(.setlist, songID: song?.id))
         }
 
         switch length {
         case .s15:
-            blocks = [warmup(3), technique(4), problem(0, 5), contextPlay(3)]
+            blocks = [warmup(2), tech(0, 4), problem(0, 4), play(6, 0)]
         case .s30:
-            blocks = [warmup(5), fretboard(5), technique(8), problem(0, 8), contextPlay(4)]
+            blocks = [warmup(3), tech(0, 5), tech(1, 4), problem(0, 6), pentaBlock(4), play(8, 0)]
         case .s45:
-            blocks = [warmup(6), fretboard(6), technique(9), problem(0, 10), problem(1, 8), play(6)]
+            blocks = [warmup(4), tech(0, 5), tech(1, 5), problem(0, 7), problem(1, 5), pentaBlock(6), play(13, 0)]
         case .s60:
-            blocks = [warmup(7), fretboard(8), technique(10), problem(0, 12), problem(1, 10), play(8), problem(2, 5)]
+            blocks = [warmup(5), tech(0, 6), tech(1, 5), tech(2, 5), problem(0, 8), problem(1, 6), pentaBlock(7), play(12, 0), play(6, 1)]
         }
     }
 
@@ -266,31 +262,47 @@ struct TodayView: View {
         case .pentatonic:  PentatonicView()
         case .pick:        PickOctavesView()
         case .precision:   PrecisionOctavesView()
+        case .technique(let ex): GuidedTechniqueView(exercise: ex)
         case .practiceClass(let r, let ctx): PracticeClassView(reason: r, contextOnly: ctx)
-        case .songs(let s): SongsView(source: s)
+        case .songs(let s, let sid): SongsView(source: s, preselectID: sid)
         }
     }
 }
 
 // MARK: - Session-Block mit Timer + Dialog
 
-/// Uhr für einen Block; feuert nach `seconds`.
+/// Uhr für einen Block: läuft `seconds` herunter, danach eine kurze Nachspiel-
+/// Karenz (damit der aktuelle Durchlauf zu Ende gespielt werden kann), dann
+/// schaltet die Session automatisch weiter (`onAutoAdvance`).
 @MainActor
 final class BlockClock: ObservableObject {
+    enum Phase { case running, grace }
     @Published var remaining = 0
-    @Published var finished = false
+    @Published var phase: Phase = .running
+    @Published var graceLeft = 0
+    var onAutoAdvance: (() -> Void)?
+
+    private let graceSeconds = 10
     private var timer: Timer?
 
     func start(seconds: Int) {
-        stop(); remaining = max(1, seconds); finished = false
+        stop(); remaining = max(1, seconds); phase = .running; graceLeft = 0
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if self.remaining > 0 { self.remaining -= 1 }
-                if self.remaining <= 0 { self.stop(); self.finished = true }
-            }
+            MainActor.assumeIsolated { self?.tickSecond() }
         }
     }
+
+    private func tickSecond() {
+        switch phase {
+        case .running:
+            if remaining > 0 { remaining -= 1 }
+            if remaining <= 0 { phase = .grace; graceLeft = graceSeconds }
+        case .grace:
+            if graceLeft > 0 { graceLeft -= 1 }
+            if graceLeft <= 0 { stop(); onAutoAdvance?() }
+        }
+    }
+
     func stop() { timer?.invalidate(); timer = nil }
 }
 
@@ -319,7 +331,7 @@ struct SessionBlockContainer<Content: View>: View {
             VStack {
                 HStack {
                     Spacer()
-                    Text("\(clock.remaining / 60):\(String(format: "%02d", clock.remaining % 60))")
+                    Text(clock.phase == .grace ? "Durchlauf zu Ende spielen …" : "\(clock.remaining / 60):\(String(format: "%02d", clock.remaining % 60))")
                         .font(.caption).monospacedDigit().fontWeight(.semibold)
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(.ultraThinMaterial, in: Capsule())
@@ -327,29 +339,34 @@ struct SessionBlockContainer<Content: View>: View {
                 }
                 Spacer()
             }
-            if clock.finished { dialog }
+            if clock.phase == .grace { graceBanner }
         }
-        .onAppear { clock.start(seconds: minutes * 60) }
+        .onAppear {
+            clock.onAutoAdvance = onNext
+            clock.start(seconds: minutes * 60)
+        }
         .onDisappear { clock.stop() }
     }
 
-    private var dialog: some View {
-        ZStack {
-            Color.black.opacity(0.4).ignoresSafeArea()
-            VStack(spacing: 16) {
-                Text("Zeit um").font(.title2).bold()
-                Text("\(title) · \(minutes) min").font(.subheadline).foregroundColor(.secondary)
+    /// Nach Ablauf: dezenter Hinweis mit Auto-Weiter-Countdown; du kannst sofort
+    /// weiter, den Block nochmal starten oder abbrechen.
+    private var graceBanner: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Text("Zeit um · weiter in \(clock.graceLeft)s").font(.headline)
+                Text("\(title) · \(minutes) min").font(.caption).foregroundColor(.secondary)
                 HStack(spacing: 12) {
                     Button("Nochmal") { clock.start(seconds: minutes * 60) }
-                        .buttonStyle(.bordered).controlSize(.large)
-                    Button("Weiter") { onNext() }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                        .buttonStyle(.bordered)
+                    Button("Jetzt weiter") { clock.stop(); onNext() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Ende", role: .cancel) { clock.stop(); onCancel() }
                 }
-                Button("Abbrechen", role: .cancel) { onCancel() }
             }
-            .padding(28)
-            .background(RoundedRectangle(cornerRadius: 20).fill(.regularMaterial))
-            .padding(40)
+            .padding(20)
+            .background(RoundedRectangle(cornerRadius: 18).fill(.regularMaterial))
+            .padding(.horizontal, 24).padding(.bottom, 28)
         }
     }
 }

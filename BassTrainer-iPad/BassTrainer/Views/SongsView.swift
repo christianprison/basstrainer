@@ -25,8 +25,11 @@ struct SongsView: View {
     // Statuszeile so hoch wie der Play-Button (44) + 20 px.
     private let statusBarHeight: CGFloat = 64
 
-    init(source: SongSource) {
+    private let preselectID: String?
+
+    init(source: SongSource, preselectID: String? = nil) {
         self.source = source
+        self.preselectID = preselectID
         _catalog = StateObject(wrappedValue: SongCatalog(source: source))
     }
 
@@ -77,7 +80,8 @@ struct SongsView: View {
         player.stop(); metronome.stop()
         selectedID = nil
         await catalog.load(bandID: selectedBandID)
-        selectSong(catalog.songs.first)
+        let pre = preselectID.flatMap { id in catalog.songs.first { $0.id == id } }
+        selectSong(pre ?? catalog.songs.first)
     }
 
     // MARK: - Links: Song-Navigation (20 %)

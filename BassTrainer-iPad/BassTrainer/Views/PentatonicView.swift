@@ -84,8 +84,15 @@ struct PentatonicView: View {
     }
 
     private var caption: some View {
-        Text(vm.relativeHint)
-            .font(.caption).foregroundColor(.secondary)
+        VStack(spacing: 4) {
+            Text(vm.relativeHint)
+                .font(.caption).foregroundColor(.secondary)
+            Text("Was üben? Spiele die Box langsam rauf und runter (Grundton → hoch → zurück zum Grundton), dann als Übung: Grundton anspielen, kurze Läufe improvisieren, in die nächste Lage wechseln. Ziel: die Shape ohne Nachdenken greifen.")
+                .font(.caption2).foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+        }
     }
 
     private var legend: some View {
