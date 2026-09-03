@@ -89,6 +89,8 @@ private struct MenuLevelView: View {
             SongsView(source: .repertoire)
         case .introQuiz:
             IntroQuizView()
+        case .transitions:
+            TransitionsView()
         case .introRecorder:
             IntroRecorderView()
         case .latencyCalibration:

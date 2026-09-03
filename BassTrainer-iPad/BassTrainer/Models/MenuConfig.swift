@@ -12,6 +12,7 @@ enum MenuMode {
     case songsList          // Aktuelle Setlist (setlist_public)
     case repertoireList     // Alle Songs (Tabelle songs)
     case introQuiz          // Songanfänge merken (Abruf-Übung)
+    case transitions        // Song-Übergänge der Setlist üben
     case introRecorder      // Kurator: Song-Anfänge einspielen → DB
     case latencyCalibration // Timing-Latenz messen (120 BPM, Viertel spielen)
     case curatorSettings    // Kurator-Status / eigene uid
@@ -25,7 +26,7 @@ enum MenuMode {
     var isPractice: Bool {
         switch self {
         case .fretboard, .warmup, .orientation, .pickOctaves, .pentatonic, .precisionOctaves,
-             .songsList, .repertoireList, .introQuiz, .practiceClass:
+             .songsList, .repertoireList, .introQuiz, .transitions, .practiceClass:
             return true
         default:
             return false
@@ -95,6 +96,7 @@ enum MenuConfig {
                 MenuItem(id: "aktuelle-setlist", label: "Aktuelle Setlist", description: "Aktuelle Setlist – zum Mitspielen", mode: .songsList),
                 MenuItem(id: "repertoire", label: "Alle Songs", description: "Alle Songs – zum Mitspielen", mode: .repertoireList),
                 MenuItem(id: "songanfaenge-merken", label: "Songanfänge merken", description: "Zufälliger Songanfang nach 2-Takt-Einzähler", mode: .introQuiz),
+                MenuItem(id: "uebergaenge", label: "Übergänge", description: "Song-Wechsel üben: letzte 2 Parts → Applaus → erste 2 Parts", mode: .transitions),
             ]
         ),
         MenuItem(

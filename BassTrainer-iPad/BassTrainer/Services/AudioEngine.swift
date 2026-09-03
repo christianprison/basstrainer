@@ -351,6 +351,35 @@ final class AudioEngine: ObservableObject {
     func playSnare() { playSamples(snareSamples()) }
     func playHihat(accent: Bool) { playSamples(hihatSamples(accent: accent)) }
 
+    /// Kurzer Applaus-Einspieler (synthetisiert): gefiltertes Rauschen mit
+    /// Aufblenden/Ausblenden plus zufälligen Klatsch-Transienten.
+    func applauseSamples(duration: Double = 2.6) -> [Float] {
+        let n = Int(sampleRate * duration)
+        guard n > 0 else { return [] }
+        var s = [Float](repeating: 0, count: n)
+        // Klatsch-Zeitpunkte (dicht, leicht unregelmäßig).
+        var claps = Set<Int>()
+        var i = 0
+        while i < n { claps.insert(i); i += max(1, Int(sampleRate * Double.random(in: 0.008...0.03))) }
+        var prev = 0.0
+        var clapGain = 0.0
+        let clapDecay = exp(-1.0 / (sampleRate * 0.03))   // ~30 ms Abkling
+        for k in 0..<n {
+            let t = Double(k) / sampleRate
+            let noise = Double.random(in: -1...1)
+            let hp = noise - prev; prev = noise            // grober Hochpass (heller)
+            if claps.contains(k) { clapGain = 1.0 }
+            clapGain *= clapDecay
+            let inEnv = min(1.0, t / 0.35)
+            let outEnv = min(1.0, max(0.0, (duration - t) / 0.7))
+            let amp = (0.18 + 0.55 * clapGain) * inEnv * outEnv
+            s[k] = Float(amp * hp)
+        }
+        return s
+    }
+
+    func playApplause() { playSamples(applauseSamples()) }
+
     // MARK: - Private: WAV Playback
 
     /// Erzeugt einen Endlos-Loop-Player aus rohen Samples (für „Aufnahme abhören").
