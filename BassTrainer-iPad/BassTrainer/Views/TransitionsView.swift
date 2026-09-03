@@ -142,10 +142,10 @@ final class TransitionsViewModel: ObservableObject {
         let tr = transitions[idx]
         status = nil
         guard let aPath = tr.from.playalongPath, let aURL = SupabaseConfig.publicAudioURL(for: aPath) else {
-            status = "Kein Play-along für „\(tr.from.name)"."; phase = .idle; return
+            status = "Kein Play-along für \(tr.from.name)."; phase = .idle; return
         }
         guard let bPath = tr.to.playalongPath, let bURL = SupabaseConfig.publicAudioURL(for: bPath) else {
-            status = "Kein Play-along für „\(tr.to.name)"."; phase = .idle; return
+            status = "Kein Play-along für \(tr.to.name)."; phase = .idle; return
         }
         phase = .loading
         Task {
