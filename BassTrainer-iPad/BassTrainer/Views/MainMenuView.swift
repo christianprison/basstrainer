@@ -91,6 +91,8 @@ private struct MenuLevelView: View {
             IntroQuizView()
         case .transitions:
             TransitionsView()
+        case .gigPrep:
+            GigPrepView()
         case .introRecorder:
             IntroRecorderView()
         case .latencyCalibration:
