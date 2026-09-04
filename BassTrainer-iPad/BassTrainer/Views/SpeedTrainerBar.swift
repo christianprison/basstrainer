@@ -45,10 +45,18 @@ final class SpeedTrainer: ObservableObject {
     private var bpm = 120
     private var onsetTimes: [Double] = []
     private var cleanPasses = 0
+    private var cancellables = Set<AnyCancellable>()
 
     func configure(player: SongPlayer, bpm: Int) {
         self.player = player
         self.bpm = max(1, bpm)
+        // Tempoanzeige (tempoPercent) liest player.loopRate → auf Änderungen
+        // des Players hören, damit die Prozentanzeige mitläuft.
+        cancellables.removeAll()
+        player.$loopRate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     var tempoPercent: Int { Int(((player?.loopRate ?? 1) * 100).rounded()) }

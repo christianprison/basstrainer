@@ -19,6 +19,7 @@ final class SongPlayer: ObservableObject {
 
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var boundaryObserver: Any?
     private var loop: (start: Double, end: Double)?
     private var loopProgressive = false
     private let minLoopRate: Float = 0.6
@@ -49,18 +50,9 @@ final class SongPlayer: ObservableObject {
         ) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let t = time.seconds
-                // Loop: am Ende zurück zum Anfang; im progressiven Modus Tempo anheben.
-                if let loop = self.loop, t >= loop.end {
-                    if self.loopProgressive {
-                        self.loopRate = min(1.0, self.loopRate + self.rateStep)
-                    }
-                    self.player?.seek(to: CMTime(seconds: loop.start, preferredTimescale: 600))
-                    self.player?.rate = self.loopRate
-                    self.onLoopRestart?()
-                    return
-                }
-                self.progress = t
+                // Loop-Rücksprung läuft über einen präzisen Boundary-Observer
+                // (kein Preroll/Verzug); hier nur Fortschritt/Dauer aktualisieren.
+                self.progress = time.seconds
                 if let d = self.player?.currentItem?.duration.seconds, d.isFinite {
                     self.duration = d
                 }
@@ -101,6 +93,30 @@ final class SongPlayer: ObservableObject {
         seek(to: start)
         player.rate = loopRate
         isPlaying = true
+        installLoopBoundary()
+    }
+
+    /// Präziser Rücksprung am Loop-Ende (feuert exakt beim Überschreiten von
+    /// `loop.end`, ohne das ~100-ms-Raster des periodischen Observers).
+    private func installLoopBoundary() {
+        if let boundaryObserver { player?.removeTimeObserver(boundaryObserver); self.boundaryObserver = nil }
+        guard let player, let loop else { return }
+        let end = CMTime(seconds: loop.end, preferredTimescale: 600)
+        boundaryObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: end)], queue: .main) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let loop = self.loop, let player = self.player else { return }
+                if self.loopProgressive { self.loopRate = min(1.0, self.loopRate + self.rateStep) }
+                player.seek(to: CMTime(seconds: loop.start, preferredTimescale: 600))
+                player.rate = self.loopRate
+                self.progress = loop.start
+                self.onLoopRestart?()
+            }
+        }
+    }
+
+    private func removeLoopBoundary() {
+        if let boundaryObserver { player?.removeTimeObserver(boundaryObserver) }
+        boundaryObserver = nil
     }
 
     /// Schaltet die zeitgesteuerte Auto-Beschleunigung am laufenden Loop um.
@@ -122,6 +138,7 @@ final class SongPlayer: ObservableObject {
 
     /// Beendet den Loop (normale Wiedergabe läuft in Originaltempo weiter).
     func clearLoop() {
+        removeLoopBoundary()
         loop = nil
         loopProgressive = false
         loopRate = 1.0
@@ -139,6 +156,7 @@ final class SongPlayer: ObservableObject {
         player?.pause()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil
+        removeLoopBoundary()
         player = nil
         loop = nil
         loopProgressive = false

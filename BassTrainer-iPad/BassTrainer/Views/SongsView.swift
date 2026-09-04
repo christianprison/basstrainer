@@ -26,10 +26,12 @@ struct SongsView: View {
     private let statusBarHeight: CGFloat = 64
 
     private let preselectID: String?
+    private let focused: Bool
 
-    init(source: SongSource, preselectID: String? = nil) {
+    init(source: SongSource, preselectID: String? = nil, focused: Bool = false) {
         self.source = source
         self.preselectID = preselectID
+        self.focused = focused
         _catalog = StateObject(wrappedValue: SongCatalog(source: source))
     }
 
@@ -43,13 +45,19 @@ struct SongsView: View {
 
     var body: some View {
         GeometryReader { geo in
-            HStack(spacing: 0) {
-                songNav
-                    .frame(width: geo.size.width * 0.2)
-                    .background(Color(.secondarySystemBackground))
-                Divider()
-                workArea
-                    .frame(width: geo.size.width * 0.8)
+            if focused {
+                // Fokus-Modus: nur der Arbeitsbereich des einen Songs, keine
+                // Setlist-Navigation – die Vorbereitung bleibt auf der Stelle.
+                workArea.frame(width: geo.size.width)
+            } else {
+                HStack(spacing: 0) {
+                    songNav
+                        .frame(width: geo.size.width * 0.2)
+                        .background(Color(.secondarySystemBackground))
+                    Divider()
+                    workArea
+                        .frame(width: geo.size.width * 0.8)
+                }
             }
         }
         .background(Color(.systemBackground))
@@ -179,6 +187,12 @@ struct SongsView: View {
     // Oben rechts (20 % Höhe): Name + Metronom + Play/Pause
     private var statusBar: some View {
         HStack(spacing: 20) {
+            if focused {
+                Button { player.stop(); metronome.stop(); dismiss() } label: {
+                    Image(systemName: "chevron.left").font(.title3)
+                }
+                .buttonStyle(.bordered)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(selectedSong?.name ?? "—").font(.title2).bold().lineLimit(1)
                 HStack(spacing: 12) {

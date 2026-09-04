@@ -9,7 +9,6 @@ struct TipsView: View {
     let songID: String
 
     @State private var editing: PersonalTip?
-    @State private var showEditor = false
     @State private var toDelete: PersonalTip?
 
     private var personal: [PersonalTip] { store.tips(forSong: songID) }
@@ -29,7 +28,7 @@ struct TipsView: View {
                 ForEach(personal) { tip in
                     TipCard(tip: tip.asSongTip) {
                         Menu {
-                            Button { editing = tip; showEditor = true } label: { Label("Bearbeiten", systemImage: "pencil") }
+                            Button { editing = tip } label: { Label("Bearbeiten", systemImage: "pencil") }
                             Button(role: .destructive) { toDelete = tip } label: { Label("Löschen", systemImage: "trash") }
                         } label: {
                             Image(systemName: "ellipsis.circle").font(.title3)
@@ -38,7 +37,6 @@ struct TipsView: View {
                 }
                 Button {
                     editing = PersonalTip(songID: songID)
-                    showEditor = true
                 } label: {
                     Label("Tipp hinzufügen", systemImage: "plus.circle.fill").font(.headline)
                 }
@@ -46,15 +44,13 @@ struct TipsView: View {
             }
             .padding(20)
         }
-        .sheet(isPresented: $showEditor) {
-            if let draft = editing {
-                TipEditorView(draft: draft) { saved in
-                    Task {
-                        if personal.contains(where: { $0.id == saved.id }) {
-                            await store.update(saved)
-                        } else {
-                            await store.add(songID: songID, title: saved.title, text: saved.text, tab: saved.tab)
-                        }
+        .sheet(item: $editing) { draft in
+            TipEditorView(draft: draft) { saved in
+                Task {
+                    if personal.contains(where: { $0.id == saved.id }) {
+                        await store.update(saved)
+                    } else {
+                        await store.add(songID: songID, title: saved.title, text: saved.text, tab: saved.tab)
                     }
                 }
             }
@@ -128,6 +124,7 @@ private struct TipEditorView: View {
     @State private var title: String = ""
     @State private var text: String = ""
     @State private var tabText: String = ""
+    @FocusState private var titleFocused: Bool
 
     private let template = "G|--------------------|\nD|--------------------|\nA|--------------------|\nE|--------------------|"
 
@@ -136,6 +133,7 @@ private struct TipEditorView: View {
             Form {
                 Section("Titel") {
                     TextField("z. B. Killing In The Name Of", text: $title)
+                        .focused($titleFocused)
                 }
                 Section("Hinweis") {
                     TextEditor(text: $text).frame(minHeight: 80)
@@ -166,6 +164,7 @@ private struct TipEditorView: View {
                 title = draft.title ?? ""
                 text = draft.text ?? ""
                 tabText = (draft.tab ?? []).joined(separator: "\n")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { titleFocused = true }
             }
         }
     }

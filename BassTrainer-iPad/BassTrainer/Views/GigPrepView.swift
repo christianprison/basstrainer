@@ -51,7 +51,7 @@ struct GigPrepView: View {
                 }
             }
             .fullScreenCover(item: $launch) { l in
-                SongsView(source: .setlist, preselectID: l.id)
+                SongsView(source: .setlist, preselectID: l.id, focused: true)
             }
         }
     }
