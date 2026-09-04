@@ -241,7 +241,7 @@ private struct PrepEditor: View {
                 } header: {
                     Text("Passage (optional)")
                 } footer: {
-                    Text("Gebunden startet Antippen den Loop genau dieser Takte (mit Speed-Trainer). Am einfachsten über „Markierte Stellen übernehmen".")
+                    Text("Gebunden startet Antippen den Loop genau dieser Takte (mit Speed-Trainer). Am einfachsten über Markierte Stellen übernehmen.")
                 }
             }
             .navigationTitle(item == nil ? "Baustein hinzufügen" : "Baustein bearbeiten")
