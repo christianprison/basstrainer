@@ -27,12 +27,16 @@ struct SongsView: View {
 
     private let preselectID: String?
     private let focused: Bool
+    private let autoLoopBars: (start: Int, end: Int)?
 
-    init(source: SongSource, preselectID: String? = nil, focused: Bool = false) {
+    init(source: SongSource, preselectID: String? = nil, focused: Bool = false,
+         autoLoopBars: (start: Int, end: Int)? = nil) {
         self.source = source
         self.preselectID = preselectID
         self.focused = focused
+        self.autoLoopBars = autoLoopBars
         _catalog = StateObject(wrappedValue: SongCatalog(source: source))
+        _mainTab = State(initialValue: autoLoopBars != nil ? .bars : .lyrics)
     }
 
     private var selectedSong: CatalogSong? {
@@ -291,7 +295,7 @@ struct SongsView: View {
                 if selectedSong != nil {
                     switch mainTab {
                     case .lyrics: LyricsView(vm: detail, player: player)
-                    case .bars:   SongGridView(song: selectedSong!, vm: detail, player: player, store: markerStore)
+                    case .bars:   SongGridView(song: selectedSong!, vm: detail, player: player, store: markerStore, autoLoop: autoLoopBars)
                     case .tips:   TipsView(centralTips: detail.tips, store: tipStore, songID: selectedSong!.id)
                     }
                 } else {
@@ -323,6 +327,7 @@ private struct SongGridView: View {
     @ObservedObject var vm: SongDetailViewModel
     @ObservedObject var player: SongPlayer
     @ObservedObject var store: PracticeMarkerStore
+    var autoLoop: (start: Int, end: Int)? = nil
     @StateObject private var speed = SpeedTrainer()
 
     @State private var markMode = false
@@ -330,8 +335,10 @@ private struct SongGridView: View {
     @State private var pendingEnd: Int?
     @State private var pendingReason: PracticeReason?
     @State private var pendingMode: PracticeMode = .loop
+    @State private var pendingNote = ""
     @State private var showReasonSheet = false
     @State private var markerToDelete: PracticeMarker?
+    @State private var didAutoLoop = false
 
     /// Gesamtzahl Takte (DB → Timeline → Snippets als Fallback).
     private var maxBar: Int {
@@ -368,6 +375,8 @@ private struct SongGridView: View {
         }
         .sheet(isPresented: $showReasonSheet) { reasonSheet }
         .task(id: song.id) { speed.stop(); await store.load(songID: song.id) }
+        .onChange(of: vm.hasTiming) { _, _ in tryAutoLoop() }
+        .onAppear { tryAutoLoop() }
         .onDisappear { speed.stop() }
     }
 
@@ -552,6 +561,9 @@ private struct SongGridView: View {
                     Text(marker.mode.shortLabel)
                 }
                 .font(.caption2).foregroundColor(.secondary)
+                if let n = marker.note, !n.isEmpty {
+                    Text(n).font(.caption2).foregroundColor(.secondary).italic()
+                }
             }
             Spacer()
             Button { loop(marker) } label: {
@@ -612,6 +624,10 @@ private struct SongGridView: View {
                              : "Mit Anlauf aus dem Teil davor – Übergang im Zusammenhang.")
                             .font(.caption).foregroundColor(.secondary)
                     }
+                    Section("Was üben? (optional)") {
+                        TextField("z. B. neue Lage sicher greifen, Endton treffen …", text: $pendingNote, axis: .vertical)
+                            .lineLimit(1...3)
+                    }
                 }
             }
             .navigationTitle(reasonTitle)
@@ -652,7 +668,8 @@ private struct SongGridView: View {
         if let s = pendingStart, let e = pendingEnd, let reason = pendingReason {
             let songID = song.id
             let mode = pendingMode
-            Task { await store.add(songID: songID, startBar: s, endBar: e, reason: reason, mode: mode) }
+            let note = pendingNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            Task { await store.add(songID: songID, startBar: s, endBar: e, reason: reason, mode: mode, note: note.isEmpty ? nil : note) }
         }
         finishMarking()
     }
@@ -664,6 +681,7 @@ private struct SongGridView: View {
         pendingEnd = nil
         pendingReason = nil
         pendingMode = .loop
+        pendingNote = ""
     }
 
     private func loop(_ marker: PracticeMarker) {
@@ -690,6 +708,15 @@ private struct SongGridView: View {
                             progressive: speed.mode == .autoTime, startRate: startRate)
             speed.loopStarted()
         }
+    }
+
+    /// Startet – aus der Vorbereitung geöffnet – automatisch den Loop der
+    /// gewünschten Passage, sobald das Timing des Songs geladen ist.
+    private func tryAutoLoop() {
+        guard let a = autoLoop, !didAutoLoop, vm.hasTiming else { return }
+        didAutoLoop = true
+        let marker = PracticeMarker(songID: song.id, startBar: a.start, endBar: a.end, reason: .other, mode: .loop)
+        loop(marker)
     }
 }
 

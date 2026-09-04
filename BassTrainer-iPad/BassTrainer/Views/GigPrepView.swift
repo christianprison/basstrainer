@@ -10,12 +10,19 @@ struct GigPrepView: View {
     @AppStorage("selectedBandID") private var bandID = ""
     @Environment(\.dismiss) private var dismiss
 
+    @StateObject private var markerStore = PracticeMarkerStore()
     @State private var editing: PrepItem?
     @State private var adding = false
     @State private var launch: LaunchSong?
     @State private var loaded = false
+    @State private var importInfo: String?
 
-    private struct LaunchSong: Identifiable { let id: String }
+    private struct LaunchSong: Identifiable {
+        let songID: String
+        let start: Int?
+        let end: Int?
+        var id: String { "\(songID)-\(start ?? -1)-\(end ?? -1)" }
+    }
 
     var body: some View {
         NavigationStack {
@@ -34,25 +41,41 @@ struct GigPrepView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { adding = true } label: { Image(systemName: "plus") }
-                        .disabled(catalog.songs.isEmpty)
+                    Menu {
+                        Button { adding = true } label: { Label("Baustein hinzufügen", systemImage: "plus") }
+                        Button { Task { await importMarkers() } } label: {
+                            Label("Markierte Stellen übernehmen", systemImage: "mappin.and.ellipse")
+                        }
+                        if store.hasSeed(bandID: bandID) {
+                            Button { Task { await store.seed(bandID: bandID) } } label: {
+                                Label("Startinhalt laden", systemImage: "sparkles")
+                            }
+                        }
+                    } label: { Image(systemName: "plus") }
+                    .disabled(catalog.songs.isEmpty)
                 }
             }
             .task { if !loaded { loaded = true; await reload() } }
             .sheet(isPresented: $adding) {
-                PrepEditor(songs: catalog.songs, item: nil) { songID, type, note in
-                    Task { await store.add(songID: songID, type: type, note: note, bandID: bandID) }
+                PrepEditor(songs: catalog.songs, item: nil) { songID, type, note, s, e in
+                    Task { await store.add(songID: songID, type: type, note: note, bandID: bandID, startBar: s, endBar: e) }
                 }
             }
             .sheet(item: $editing) { item in
-                PrepEditor(songs: catalog.songs, item: item) { songID, type, note in
-                    var updated = item; updated.songID = songID; updated.type = type; updated.note = note
+                PrepEditor(songs: catalog.songs, item: item) { songID, type, note, s, e in
+                    var updated = item
+                    updated.songID = songID; updated.type = type; updated.note = note
+                    updated.startBar = s; updated.endBar = e
                     Task { await store.update(updated, bandID: bandID) }
                 }
             }
             .fullScreenCover(item: $launch) { l in
-                SongsView(source: .setlist, preselectID: l.id, focused: true)
+                let bars: (start: Int, end: Int)? = (l.start != nil && l.end != nil) ? (l.start!, l.end!) : nil
+                SongsView(source: .setlist, preselectID: l.songID, focused: true, autoLoopBars: bars)
             }
+            .alert("Markierte Stellen", isPresented: Binding(get: { importInfo != nil }, set: { if !$0 { importInfo = nil } })) {
+                Button("OK", role: .cancel) { importInfo = nil }
+            } message: { Text(importInfo ?? "") }
         }
     }
 
@@ -80,20 +103,24 @@ struct GigPrepView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "list.bullet.rectangle.portrait").font(.system(size: 40)).foregroundColor(.secondary)
-            Text("Noch keine Bausteine. Füge oben mit + eigene hinzu – oder lade den vorbereiteten Startinhalt.")
+            Text("Noch keine Bausteine. Übernimm deine markierten Stellen, lade den Startinhalt – oder füge oben mit + eigene hinzu.")
                 .font(.callout).foregroundColor(.secondary).multilineTextAlignment(.center)
+            Button { Task { await importMarkers() } } label: {
+                Label("Markierte Stellen übernehmen", systemImage: "mappin.and.ellipse")
+            }
+            .buttonStyle(.borderedProminent)
             if store.hasSeed(bandID: bandID) {
                 Button { Task { await store.seed(bandID: bandID) } } label: {
                     Label("Schwächen dieser Setlist laden", systemImage: "sparkles")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
             }
         }
         .frame(maxWidth: .infinity).padding(.vertical, 20)
     }
 
     private func row(_ item: PrepItem) -> some View {
-        Button { launch = LaunchSong(id: item.songID) } label: {
+        Button { launch = LaunchSong(songID: item.songID, start: item.startBar, end: item.endBar) } label: {
             HStack(spacing: 12) {
                 Image(systemName: item.type.systemImage)
                     .font(.title3).foregroundColor(.accentColor).frame(width: 28)
@@ -104,6 +131,12 @@ struct GigPrepView: View {
                             .padding(.horizontal, 6).padding(.vertical, 1)
                             .background(Capsule().fill(Color.accentColor.opacity(0.15)))
                             .foregroundColor(.accentColor)
+                        if let b = item.bars {
+                            Text("Takt \(b.start)–\(b.end)").font(.caption2).monospacedDigit()
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                                .foregroundColor(.secondary)
+                        }
                     }
                     if !item.note.isEmpty {
                         Text(item.note).font(.caption).foregroundColor(.secondary)
@@ -117,7 +150,7 @@ struct GigPrepView: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "play.circle").foregroundColor(.accentColor)
+                Image(systemName: item.bars != nil ? "repeat.circle" : "play.circle").foregroundColor(.accentColor)
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
@@ -136,6 +169,13 @@ struct GigPrepView: View {
         await store.load(bandID: bandID)
     }
 
+    private func importMarkers() async {
+        await markerStore.loadAll()
+        let setIDs = Set(catalog.songs.map { $0.id })
+        let n = await store.importMarkers(markerStore.markers, songIDs: setIDs, bandID: bandID)
+        importInfo = n > 0 ? "\(n) markierte Stelle(n) als Baustein übernommen." : "Keine neuen markierten Stellen gefunden."
+    }
+
     private func songName(_ id: String) -> String {
         catalog.songs.first { $0.id == id }?.name ?? "Unbekannter Song"
     }
@@ -151,21 +191,27 @@ struct GigPrepView: View {
 private struct PrepEditor: View {
     let songs: [CatalogSong]
     let item: PrepItem?
-    let onSave: (_ songID: String, _ type: PrepType, _ note: String) -> Void
+    let onSave: (_ songID: String, _ type: PrepType, _ note: String, _ startBar: Int?, _ endBar: Int?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var songID: String
     @State private var type: PrepType
     @State private var note: String
+    @State private var bindToBars: Bool
+    @State private var startBar: Int
+    @State private var endBar: Int
 
     init(songs: [CatalogSong], item: PrepItem?,
-         onSave: @escaping (_ songID: String, _ type: PrepType, _ note: String) -> Void) {
+         onSave: @escaping (_ songID: String, _ type: PrepType, _ note: String, _ startBar: Int?, _ endBar: Int?) -> Void) {
         self.songs = songs
         self.item = item
         self.onSave = onSave
         _songID = State(initialValue: item?.songID ?? songs.first?.id ?? "")
         _type = State(initialValue: item?.type ?? .start)
         _note = State(initialValue: item?.note ?? "")
+        _bindToBars = State(initialValue: item?.bars != nil)
+        _startBar = State(initialValue: item?.startBar ?? 1)
+        _endBar = State(initialValue: item?.endBar ?? 4)
     }
 
     var body: some View {
@@ -182,9 +228,20 @@ private struct PrepEditor: View {
                     }
                     .pickerStyle(.inline)
                 }
-                Section("Notiz") {
+                Section("Notiz (was üben?)") {
                     TextField("z. B. Anfang sicher treffen, Tim ansehen …", text: $note, axis: .vertical)
                         .lineLimit(2...5)
+                }
+                Section {
+                    Toggle("An Taktstelle binden", isOn: $bindToBars)
+                    if bindToBars {
+                        Stepper("Von Takt \(startBar)", value: $startBar, in: 1...400)
+                        Stepper("Bis Takt \(max(startBar, endBar))", value: $endBar, in: startBar...400)
+                    }
+                } header: {
+                    Text("Passage (optional)")
+                } footer: {
+                    Text("Gebunden startet Antippen den Loop genau dieser Takte (mit Speed-Trainer). Am einfachsten über „Markierte Stellen übernehmen".")
                 }
             }
             .navigationTitle(item == nil ? "Baustein hinzufügen" : "Baustein bearbeiten")
@@ -192,8 +249,13 @@ private struct PrepEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Sichern") { onSave(songID, type, note); dismiss() }
-                        .disabled(songID.isEmpty)
+                    Button("Sichern") {
+                        let s = bindToBars ? startBar : nil
+                        let e = bindToBars ? max(startBar, endBar) : nil
+                        onSave(songID, type, note, s, e)
+                        dismiss()
+                    }
+                    .disabled(songID.isEmpty)
                 }
             }
         }
