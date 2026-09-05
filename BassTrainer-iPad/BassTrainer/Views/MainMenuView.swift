@@ -93,6 +93,8 @@ private struct MenuLevelView: View {
             TransitionsView()
         case .gigPrep:
             GigPrepView()
+        case .setRun:
+            SetRunView()
         case .introRecorder:
             IntroRecorderView()
         case .latencyCalibration:
