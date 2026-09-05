@@ -109,11 +109,16 @@ final class SetRunViewModel: ObservableObject {
     @Published var duration = 0.0
 
     private let audio = AudioEngine()
-    private var player: AVPlayer?
-    private var timeObs: Any?
+    private var playerA: AVPlayer?          // Anfang (bis zum Sprung)
+    private var playerB: AVPlayer?          // Schluss (ab letzter Wiederholung)
+    private var obsA: Any?
+    private var obsB: Any?
     private var endObs: NSObjectProtocol?
+    private var fadeTimer: Timer?
     private var seg2Start = 0.0
     private var pendingJump: Double?
+    private var jumped = false
+    private let crossfadeSeconds = 0.5
 
     var phaseLabel: String {
         switch phase {
@@ -171,39 +176,82 @@ final class SetRunViewModel: ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        let item = AVPlayerItem(url: url)
-        let p = AVPlayer(playerItem: item)
-        p.automaticallyWaitsToMinimizeStalling = false   // schneller Wiedereinstieg nach dem Sprung
-        player = p
+        let itemA = AVPlayerItem(url: url)
+        let a = AVPlayer(playerItem: itemA)
+        a.automaticallyWaitsToMinimizeStalling = false
+        playerA = a
         self.seg2Start = seg2Start
         self.pendingJump = jumpAt
+        self.jumped = false
         phase = (jumpAt != nil) ? .intro : .ending
         progress = 0; duration = 0
 
-        endObs = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.songFinished() }
-        }
-        timeObs = p.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.progress = time.seconds
-                if let d = self.player?.currentItem?.duration.seconds, d.isFinite { self.duration = d }
-                if let j = self.pendingJump, time.seconds >= j { self.doJump() }
+        // Schluss-Player vorbereiten und schon zur Zielstelle puffern (2. Stream),
+        // damit der Sprung ohne Nachladen und mit Crossfade weich läuft.
+        if jumpAt != nil {
+            let itemB = AVPlayerItem(url: url)
+            let b = AVPlayer(playerItem: itemB)
+            b.automaticallyWaitsToMinimizeStalling = false
+            b.volume = 0
+            playerB = b
+            b.seek(to: CMTime(seconds: seg2Start, preferredTimescale: 600))
+            endObs = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: itemB, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.songFinished() }
+            }
+            obsB = b.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { [weak self] time in
+                MainActor.assumeIsolated {
+                    guard let self, self.jumped else { return }
+                    self.progress = time.seconds
+                    if let d = self.playerB?.currentItem?.duration.seconds, d.isFinite { self.duration = d }
+                }
+            }
+        } else {
+            endObs = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: itemA, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.songFinished() }
             }
         }
-        p.seek(to: .zero) { _ in DispatchQueue.main.async { p.play() } }
+
+        obsA = a.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self, !self.jumped else { return }
+                self.progress = time.seconds
+                if let d = self.playerA?.currentItem?.duration.seconds, d.isFinite { self.duration = d }
+                if let j = self.pendingJump, time.seconds >= j { self.crossfadeToEnding() }
+            }
+        }
+        a.seek(to: .zero) { _ in DispatchQueue.main.async { a.play() } }
     }
 
-    /// Sprung (ohne Preroll) zur letzten Wiederholung.
-    private func doJump() {
-        guard let p = player else { return }
+    /// Weicher Übergang: Schluss-Player einblenden, Anfang ausblenden.
+    private func crossfadeToEnding() {
+        guard !jumped, let a = playerA, let b = playerB else { return }
+        jumped = true
         pendingJump = nil
         phase = .ending
-        p.seek(to: CMTime(seconds: seg2Start, preferredTimescale: 600),
-               toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-            DispatchQueue.main.async { p.play() }
+        b.volume = 0
+        b.play()
+        let steps = 20
+        let interval = crossfadeSeconds / Double(steps)
+        var i = 0
+        fadeTimer?.invalidate()
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] t in
+            MainActor.assumeIsolated {
+                guard let self else { t.invalidate(); return }
+                i += 1
+                let x = Float(i) / Float(steps)
+                self.playerA?.volume = 1 - x
+                self.playerB?.volume = x
+                if i >= steps {
+                    t.invalidate()
+                    self.fadeTimer = nil
+                    self.playerA?.pause()
+                    self.playerA?.volume = 1
+                }
+            }
         }
     }
 
@@ -222,13 +270,17 @@ final class SetRunViewModel: ObservableObject {
     }
 
     private func teardownPlayer() {
-        if let timeObs { player?.removeTimeObserver(timeObs) }
-        timeObs = nil
+        fadeTimer?.invalidate(); fadeTimer = nil
+        if let obsA { playerA?.removeTimeObserver(obsA) }
+        obsA = nil
+        if let obsB { playerB?.removeTimeObserver(obsB) }
+        obsB = nil
         if let endObs { NotificationCenter.default.removeObserver(endObs) }
         endObs = nil
-        player?.pause()
-        player = nil
+        playerA?.pause(); playerA = nil
+        playerB?.pause(); playerB = nil
         pendingJump = nil
+        jumped = false
     }
 
     // MARK: Segmente
@@ -240,11 +292,10 @@ final class SetRunViewModel: ObservableObject {
             .lowercased()
     }
 
-    /// Maßgeblich ist der LETZTE Teil, der eine Wiederholung eines früheren ist
-    /// (typischerweise der End-Chorus). Gespielt wird bis zum Beginn seiner
-    /// ersten Instanz, dann Sprung direkt zu seiner letzten Instanz.
-    /// jumpAt = Beginn der ersten Instanz, seg2Start = Beginn der letzten.
-    /// jumpAt == nil ⇒ ganzen Song spielen.
+    /// Wählt unter allen wiederholten Teilen den Sprung, der am MEISTEN Song
+    /// überspringt: für jeden Teil, der mehrfach vorkommt, die Lücke zwischen
+    /// erster und letzter Instanz; die größte gewinnt. jumpAt = Beginn der
+    /// ersten Instanz, seg2Start = Beginn der letzten. nil ⇒ ganzen Song spielen.
     private func segments(for song: CatalogSong) async -> (jumpAt: Double?, seg2Start: Double) {
         let id = URLQueryItem(name: "song_id", value: "eq.\(song.id)")
         let parts: [SongPart] = (try? await SupabaseConfig.get(
@@ -259,13 +310,18 @@ final class SetRunViewModel: ObservableObject {
         for b in tl { barTime[b.barNum] = b.tStart }
         let bases = parts.map { base($0.name) }
 
-        // Letzte Part-Instanz, die eine Wiederholung eines früheren Teils ist.
-        var lastRep: Int?
-        for i in bases.indices.reversed() where bases[0..<i].contains(bases[i]) { lastRep = i; break }
-        guard let li = lastRep, let fi = bases.firstIndex(of: bases[li]),
-              let jump = barTime[parts[fi].startBar],
-              let s2 = barTime[parts[li].startBar], s2 > jump + 1 else { return (nil, 0) }
-        return (jump, s2)
+        var bestJump: Double?
+        var bestSeg2 = 0.0
+        var bestGap = 1.0   // mind. > 1 s Ersparnis, sonst lohnt der Sprung nicht
+        for b in Set(bases) {
+            let idxs = bases.indices.filter { bases[$0] == b }
+            guard idxs.count >= 2, let fi = idxs.first, let li = idxs.last,
+                  let j = barTime[parts[fi].startBar], let s2 = barTime[parts[li].startBar] else { continue }
+            let gap = s2 - j
+            if gap > bestGap { bestGap = gap; bestJump = j; bestSeg2 = s2 }
+        }
+        guard let jump = bestJump else { return (nil, 0) }
+        return (jump, bestSeg2)
     }
 }
 
