@@ -118,8 +118,8 @@ final class SetRunViewModel: ObservableObject {
     var phaseLabel: String {
         switch phase {
         case .loading: return "lädt …"
-        case .intro:   return "Anfang → bis zum ersten wiederkehrenden Teil"
-        case .ending:  return "Schluss ab letzter Wiederholung"
+        case .intro:   return "Anfang → bis zum wiederkehrenden Schlussteil"
+        case .ending:  return "Schluss ab der letzten Wiederholung"
         case .idle:    return ""
         }
     }
@@ -240,8 +240,11 @@ final class SetRunViewModel: ObservableObject {
             .lowercased()
     }
 
-    /// (jumpAt = Beginn des ersten wiederkehrenden Teils, seg2Start = Beginn
-    /// seiner letzten Wiederholung). jumpAt == nil ⇒ ganzen Song spielen.
+    /// Maßgeblich ist der LETZTE Teil, der eine Wiederholung eines früheren ist
+    /// (typischerweise der End-Chorus). Gespielt wird bis zum Beginn seiner
+    /// ersten Instanz, dann Sprung direkt zu seiner letzten Instanz.
+    /// jumpAt = Beginn der ersten Instanz, seg2Start = Beginn der letzten.
+    /// jumpAt == nil ⇒ ganzen Song spielen.
     private func segments(for song: CatalogSong) async -> (jumpAt: Double?, seg2Start: Double) {
         let id = URLQueryItem(name: "song_id", value: "eq.\(song.id)")
         let parts: [SongPart] = (try? await SupabaseConfig.get(
@@ -256,11 +259,12 @@ final class SetRunViewModel: ObservableObject {
         for b in tl { barTime[b.barNum] = b.tStart }
         let bases = parts.map { base($0.name) }
 
-        var firstIdx: Int?
-        for i in bases.indices where bases[(i + 1)...].contains(bases[i]) { firstIdx = i; break }
-        guard let fi = firstIdx, let jump = barTime[parts[fi].startBar] else { return (nil, 0) }
-        let lastIdx = bases.lastIndex(of: bases[fi]) ?? fi
-        guard let s2 = barTime[parts[lastIdx].startBar], s2 > jump + 1 else { return (nil, 0) }
+        // Letzte Part-Instanz, die eine Wiederholung eines früheren Teils ist.
+        var lastRep: Int?
+        for i in bases.indices.reversed() where bases[0..<i].contains(bases[i]) { lastRep = i; break }
+        guard let li = lastRep, let fi = bases.firstIndex(of: bases[li]),
+              let jump = barTime[parts[fi].startBar],
+              let s2 = barTime[parts[li].startBar], s2 > jump + 1 else { return (nil, 0) }
         return (jump, s2)
     }
 }
