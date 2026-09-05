@@ -167,11 +167,11 @@ final class SetRunViewModel: ObservableObject {
                 songFinished()   // kein Audio → wie Songende (Applaus + weiter)
                 return
             }
-            startPlayback(url: url, jumpAt: seg.jumpAt, seg2Start: seg.seg2Start)
+            startPlayback(url: url, songStart: seg.songStart, jumpAt: seg.jumpAt, seg2Start: seg.seg2Start)
         }
     }
 
-    private func startPlayback(url: URL, jumpAt: Double?, seg2Start: Double) {
+    private func startPlayback(url: URL, songStart: Double, jumpAt: Double?, seg2Start: Double) {
         teardownPlayer()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -223,7 +223,10 @@ final class SetRunViewModel: ObservableObject {
                 if let j = self.pendingJump, time.seconds >= j { self.crossfadeToEnding() }
             }
         }
-        a.seek(to: .zero) { _ in DispatchQueue.main.async { a.play() } }
+        // Ab dem ersten Part beginnen (vorher ist manchmal Geplänkel/Einzähler).
+        a.seek(to: CMTime(seconds: max(0, songStart), preferredTimescale: 600)) { _ in
+            DispatchQueue.main.async { a.play() }
+        }
     }
 
     /// Weicher Übergang: Schluss-Player einblenden, Anfang ausblenden.
@@ -296,7 +299,7 @@ final class SetRunViewModel: ObservableObject {
     /// überspringt: für jeden Teil, der mehrfach vorkommt, die Lücke zwischen
     /// erster und letzter Instanz; die größte gewinnt. jumpAt = Beginn der
     /// ersten Instanz, seg2Start = Beginn der letzten. nil ⇒ ganzen Song spielen.
-    private func segments(for song: CatalogSong) async -> (jumpAt: Double?, seg2Start: Double) {
+    private func segments(for song: CatalogSong) async -> (songStart: Double, jumpAt: Double?, seg2Start: Double) {
         let id = URLQueryItem(name: "song_id", value: "eq.\(song.id)")
         let parts: [SongPart] = (try? await SupabaseConfig.get(
             path: "song_parts_public",
@@ -304,11 +307,14 @@ final class SetRunViewModel: ObservableObject {
         let tl: [TimelineBar] = (try? await SupabaseConfig.get(
             path: "song_timeline_public",
             query: [id, URLQueryItem(name: "order", value: "bar_num.asc")])) ?? []
-        guard parts.count >= 2, !tl.isEmpty else { return (nil, 0) }
+        guard parts.count >= 2, !tl.isEmpty else { return (0, nil, 0) }
 
         var barTime: [Int: Double] = [:]
         for b in tl { barTime[b.barNum] = b.tStart }
         let bases = parts.map { base($0.name) }
+
+        // Ab dem ersten Part beginnen (vorheriges Geplänkel/Einzähler überspringen).
+        let songStart = barTime[parts[0].startBar] ?? 0
 
         var bestJump: Double?
         var bestSeg2 = 0.0
@@ -320,8 +326,7 @@ final class SetRunViewModel: ObservableObject {
             let gap = s2 - j
             if gap > bestGap { bestGap = gap; bestJump = j; bestSeg2 = s2 }
         }
-        guard let jump = bestJump else { return (nil, 0) }
-        return (jump, bestSeg2)
+        return (songStart, bestJump, bestSeg2)
     }
 }
 
