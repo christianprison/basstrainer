@@ -152,6 +152,12 @@ final class SongPlayer: ObservableObject {
         progress = seconds
     }
 
+    /// Relativ vor-/zurückspulen (Sekunden), auf 0…Dauer geklemmt.
+    func seekRelative(_ delta: Double) {
+        let upper = duration > 0 ? duration : .greatestFiniteMagnitude
+        seek(to: max(0, min(upper, progress + delta)))
+    }
+
     func stop() {
         player?.pause()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }

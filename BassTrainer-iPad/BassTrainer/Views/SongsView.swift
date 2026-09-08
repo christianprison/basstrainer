@@ -233,16 +233,26 @@ struct SongsView: View {
             }
             .disabled((selectedSong?.bpm ?? 0) <= 0)
 
-            // Play/Pause (Play-along)
-            Button {
-                player.toggle()
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 44))
+            // Spulen ± / Play/Pause (Play-along)
+            HStack(spacing: 14) {
+                Button { player.seekRelative(-10) } label: {
+                    Image(systemName: "gobackward.10").font(.system(size: 28))
+                }
+                .buttonStyle(.plain).foregroundColor(.accentColor).disabled(!player.hasTrack)
+
+                Button {
+                    player.toggle()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44))
+                }
+                .buttonStyle(.plain).foregroundColor(.accentColor).disabled(!player.hasTrack)
+
+                Button { player.seekRelative(10) } label: {
+                    Image(systemName: "goforward.10").font(.system(size: 28))
+                }
+                .buttonStyle(.plain).foregroundColor(.accentColor).disabled(!player.hasTrack)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.accentColor)
-            .disabled(!player.hasTrack)
         }
         .padding(.horizontal, 24)
     }
