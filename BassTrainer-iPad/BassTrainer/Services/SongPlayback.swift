@@ -19,14 +19,25 @@ final class SongPlayer: ObservableObject {
 
     private var player: AVPlayer?
     private var timeObserver: Any?
-    private var boundaryObserver: Any?
+    private var currentURL: URL?
     private var loop: (start: Double, end: Double)?
     private var loopProgressive = false
+    // Zwei vorgepufferte Loop-Player für nahtlosen Rücksprung mit Crossfade.
+    private var loopA: AVPlayer?
+    private var loopB: AVPlayer?
+    private var loopObsA: Any?
+    private var loopObsB: Any?
+    private var loopActiveIsA = true
+    private var loopFadeTimer: Timer?
+    private var loopSwapping = false
+    private let crossfadeSeconds = 0.18
     private let minLoopRate: Float = 0.6
     private let rateStep: Float = 0.1
     // Grenzen für die manuelle Tempo-Steuerung (Speed-Übung).
     private let manualMin: Float = 0.4
     let manualMax: Float = 1.5
+
+    private var activeLoop: AVPlayer? { loopActiveIsA ? loopA : loopB }
 
     /// Lädt einen neuen Track (oder leert den Player, wenn kein Pfad vorhanden).
     func load(path: String?) {
@@ -38,6 +49,7 @@ final class SongPlayer: ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
 
+        currentURL = url
         let item = AVPlayerItem(url: url)
         item.audioTimePitchAlgorithm = .timeDomain   // Tonhöhe bei Tempoänderung halten
         let p = AVPlayer(playerItem: item)
@@ -61,12 +73,17 @@ final class SongPlayer: ObservableObject {
     }
 
     func toggle() {
+        if loop != nil {
+            if isPlaying { activeLoop?.pause(); isPlaying = false }
+            else { activeLoop?.rate = loopRate; isPlaying = true }
+            return
+        }
         guard let player else { return }
         if isPlaying {
             player.pause()
             isPlaying = false
         } else {
-            player.rate = (loop != nil) ? loopRate : baseRate
+            player.rate = baseRate
             isPlaying = true
         }
     }
@@ -84,39 +101,91 @@ final class SongPlayer: ObservableObject {
 
     /// Spielt die markierte Stelle als Schleife. `progressive` = langsam → schneller.
     /// `startRate` überschreibt das Anfangstempo (für die manuelle Speed-Übung).
+    /// Rücksprung über zwei vorgepufferte Player mit kurzem Crossfade – kein
+    /// Preroll, keine Lücke, der Beat bleibt erhalten.
     func playLoop(start: Double, end: Double, progressive: Bool, startRate: Float? = nil) {
-        guard let player, end > start else { return }
+        guard let url = currentURL, end > start else { return }
         loop = (start, end)
         loopProgressive = progressive
-        if let startRate { loopRate = clampRate(startRate) }
-        else { loopRate = progressive ? minLoopRate : 1.0 }
-        seek(to: start)
-        player.rate = loopRate
+        loopRate = startRate.map(clampRate) ?? (progressive ? minLoopRate : 1.0)
+        player?.pause()                 // Hauptplayer ruht während des Loops
+        teardownLoopPlayers()
+        let a = makeLoopPlayer(url, start: start)
+        let b = makeLoopPlayer(url, start: start)   // Standby, schon auf loop.start gepuffert
+        loopA = a; loopB = b; loopActiveIsA = true
+        a.volume = 1; b.volume = 0
+        loopObsA = addLoopObserver(a, isA: true)
+        loopObsB = addLoopObserver(b, isA: false)
+        a.rate = loopRate
+        progress = start
         isPlaying = true
-        installLoopBoundary()
     }
 
-    /// Präziser Rücksprung am Loop-Ende (feuert exakt beim Überschreiten von
-    /// `loop.end`, ohne das ~100-ms-Raster des periodischen Observers).
-    private func installLoopBoundary() {
-        if let boundaryObserver { player?.removeTimeObserver(boundaryObserver); self.boundaryObserver = nil }
-        guard let player, let loop else { return }
-        let end = CMTime(seconds: loop.end, preferredTimescale: 600)
-        boundaryObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: end)], queue: .main) { [weak self] in
+    private func makeLoopPlayer(_ url: URL, start: Double) -> AVPlayer {
+        let item = AVPlayerItem(url: url)
+        item.audioTimePitchAlgorithm = .timeDomain
+        let p = AVPlayer(playerItem: item)
+        p.automaticallyWaitsToMinimizeStalling = false
+        p.seek(to: CMTime(seconds: start, preferredTimescale: 600))
+        return p
+    }
+
+    private func addLoopObserver(_ p: AVPlayer, isA: Bool) -> Any {
+        p.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.02, preferredTimescale: 600), queue: .main
+        ) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, let loop = self.loop, let player = self.player else { return }
-                if self.loopProgressive { self.loopRate = min(1.0, self.loopRate + self.rateStep) }
-                player.seek(to: CMTime(seconds: loop.start, preferredTimescale: 600))
-                player.rate = self.loopRate
-                self.progress = loop.start
-                self.onLoopRestart?()
+                guard let self, let loop = self.loop, isA == self.loopActiveIsA else { return }
+                self.progress = time.seconds
+                if let d = self.activeLoop?.currentItem?.duration.seconds, d.isFinite { self.duration = d }
+                if !self.loopSwapping, time.seconds >= loop.end { self.startLoopCrossfade() }
             }
         }
     }
 
-    private func removeLoopBoundary() {
-        if let boundaryObserver { player?.removeTimeObserver(boundaryObserver) }
-        boundaryObserver = nil
+    /// Am Loop-Ende: Standby-Player (steht auf loop.start) auf dem Beat starten,
+    /// per Crossfade übernehmen, alten Player als nächsten Standby vorbereiten.
+    private func startLoopCrossfade() {
+        guard let loop, !loopSwapping else { return }
+        loopSwapping = true
+        if loopProgressive { loopRate = min(1.0, loopRate + rateStep) }
+        let outgoing = activeLoop
+        loopActiveIsA.toggle()
+        let incoming = activeLoop        // war Standby, exakt auf loop.start
+        incoming?.volume = 0
+        incoming?.rate = loopRate        // Wiedergabe ab loop.start – ohne Preroll
+        progress = loop.start
+        onLoopRestart?()
+
+        loopFadeTimer?.invalidate()
+        let steps = 12
+        let interval = crossfadeSeconds / Double(steps)
+        var i = 0
+        loopFadeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] t in
+            MainActor.assumeIsolated {
+                guard let self else { t.invalidate(); return }
+                i += 1
+                let x = Float(i) / Float(steps)
+                outgoing?.volume = 1 - x
+                incoming?.volume = x
+                if i >= steps {
+                    t.invalidate(); self.loopFadeTimer = nil
+                    outgoing?.pause(); outgoing?.volume = 0
+                    outgoing?.seek(to: CMTime(seconds: loop.start, preferredTimescale: 600))
+                    self.loopSwapping = false
+                }
+            }
+        }
+    }
+
+    private func teardownLoopPlayers() {
+        loopFadeTimer?.invalidate(); loopFadeTimer = nil
+        if let loopObsA { loopA?.removeTimeObserver(loopObsA) }; loopObsA = nil
+        if let loopObsB { loopB?.removeTimeObserver(loopObsB) }; loopObsB = nil
+        loopA?.pause(); loopA = nil
+        loopB?.pause(); loopB = nil
+        loopSwapping = false
+        loopActiveIsA = true
     }
 
     /// Schaltet die zeitgesteuerte Auto-Beschleunigung am laufenden Loop um.
@@ -128,7 +197,7 @@ final class SongPlayer: ObservableObject {
     /// Setzt das Loop-Tempo (auf 5-%-Schritte gerundet, geklemmt).
     func setLoopRate(_ r: Float) {
         loopRate = clampRate(r)
-        if loop != nil && isPlaying { player?.rate = loopRate }
+        if loop != nil && isPlaying { activeLoop?.rate = loopRate }
     }
 
     private func clampRate(_ r: Float) -> Float {
@@ -136,13 +205,17 @@ final class SongPlayer: ObservableObject {
         return min(manualMax, max(manualMin, stepped))
     }
 
-    /// Beendet den Loop (normale Wiedergabe läuft in Originaltempo weiter).
+    /// Beendet den Loop (normale Wiedergabe läuft am Hauptplayer weiter).
     func clearLoop() {
-        removeLoopBoundary()
+        let resumeAt = progress
+        teardownLoopPlayers()
         loop = nil
         loopProgressive = false
         loopRate = 1.0
-        if isPlaying { player?.rate = 1.0 }
+        if let player {
+            player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600))
+            if isPlaying { player.rate = baseRate }
+        }
     }
 
     var isLooping: Bool { loop != nil }
@@ -162,8 +235,9 @@ final class SongPlayer: ObservableObject {
         player?.pause()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil
-        removeLoopBoundary()
+        teardownLoopPlayers()
         player = nil
+        currentURL = nil
         loop = nil
         loopProgressive = false
         loopRate = 1.0
