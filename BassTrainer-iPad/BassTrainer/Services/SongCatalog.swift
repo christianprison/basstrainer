@@ -82,6 +82,44 @@ enum SupabaseConfig {
         }
         return data
     }
+
+    /// Lädt eine Datei in einen Storage-Bucket (upsert). Pfad ohne führenden Slash.
+    static func uploadObject(bucket: String, path: String, data: Data,
+                             contentType: String, token: String) async throws {
+        let enc = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        var req = URLRequest(url: URL(string: "\(url)/storage/v1/object/\(bucket)/\(enc)")!)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        req.httpBody = data
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if code == 403 { throw RESTError.forbidden }
+        guard (200...299).contains(code) else {
+            let body = (String(data: respData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            throw RESTError.message("Storage-Fehler (HTTP \(code))\(body.isEmpty ? "" : " – \(body.prefix(300))")")
+        }
+    }
+
+    /// Signierte, temporär gültige URL zu einer privaten Storage-Datei.
+    static func signedURL(bucket: String, path: String, expiresIn: Int, token: String) async throws -> URL {
+        let enc = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        var req = URLRequest(url: URL(string: "\(url)/storage/v1/object/sign/\(bucket)/\(enc)")!)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["expiresIn": expiresIn])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200...299).contains(code) else { throw RESTError.message("Signed-URL-Fehler (HTTP \(code)).") }
+        struct Signed: Decodable { let signedURL: String }
+        let s = try JSONDecoder().decode(Signed.self, from: data)
+        guard let u = URL(string: "\(url)/storage/v1\(s.signedURL)") else { throw RESTError.message("Ungültige Signed-URL.") }
+        return u
+    }
 }
 
 /// Lädt eine Song-Quelle (Setlist oder Repertoire) + Play-along-Tracks + Takt-Snippets.

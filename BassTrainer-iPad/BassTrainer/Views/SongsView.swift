@@ -20,7 +20,7 @@ struct SongsView: View {
     @AppStorage("selectedBandID") private var selectedBandID: String = ""
     @Environment(\.dismiss) private var dismiss
 
-    private enum MainTab { case lyrics, bars, tips }
+    private enum MainTab { case lyrics, bars, tips, record }
 
     // Statuszeile so hoch wie der Play-Button (44) + 20 px.
     private let statusBarHeight: CGFloat = 64
@@ -297,6 +297,7 @@ struct SongsView: View {
                 Text("Lyrics").tag(MainTab.lyrics)
                 Text("Takte").tag(MainTab.bars)
                 Text(tipCount == 0 ? "Tipps" : "Tipps (\(tipCount))").tag(MainTab.tips)
+                Text("Aufnahme").tag(MainTab.record)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 24).padding(.vertical, 8)
@@ -307,6 +308,7 @@ struct SongsView: View {
                     case .lyrics: LyricsView(vm: detail, player: player)
                     case .bars:   SongGridView(song: selectedSong!, vm: detail, player: player, store: markerStore, autoLoop: autoLoopBars)
                     case .tips:   TipsView(centralTips: detail.tips, store: tipStore, songID: selectedSong!.id)
+                    case .record: PartRecorderView(song: selectedSong!, vm: detail, player: player)
                     }
                 } else {
                     Text("Song auswählen").foregroundColor(.secondary)
